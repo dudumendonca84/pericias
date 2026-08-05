@@ -1,0 +1,22 @@
+# O acervo e tudo o que dele deriva NUNCA entra no repositorio.
+# Sao pecas de processos reais, com partes identificadas.
+acervo_pericias.sqlite
+*.sqlite
+*.sqlite-*
+diagnostico_pericias.csv
+*.csv
+
+# Documentos soltos que tenham sido copiados para a pasta do projecto
+*.pdf
+*.docx
+*.doc
+*.rtf
+*.odt
+
+# A pasta de referencias publicas fica local; so o codigo e versionado
+referencias/
+
+__pycache__/
+*.pyc
+.venv/
+venv/
