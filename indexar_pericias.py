@@ -67,7 +67,11 @@ CREATE TABLE IF NOT EXISTS documentos (
     tipo         TEXT,
     caracteres   INTEGER,
     paginas      INTEGER,
-    indexado_em  REAL
+    indexado_em  REAL,
+    -- Preenchido quando o documento veio de um ZIP: diz de que lote saiu,
+    -- para o caminho continuar a fazer sentido depois de a pasta temporaria
+    -- de extracao ser apagada.
+    origem       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_processo ON documentos(processo);
 CREATE INDEX IF NOT EXISTS idx_tipo     ON documentos(tipo);
@@ -86,6 +90,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS textos USING fts5(
 def abrir_indice(caminho: Path) -> sqlite3.Connection:
     conexao = sqlite3.connect(caminho)
     conexao.executescript(ESQUEMA)
+    # Indices criados antes de a coluna existir continuam a abrir sem erro.
+    colunas = {linha[1] for linha in conexao.execute("PRAGMA table_info(documentos)")}
+    if "origem" not in colunas:
+        conexao.execute("ALTER TABLE documentos ADD COLUMN origem TEXT")
+        conexao.commit()
     return conexao
 
 
@@ -281,7 +290,9 @@ def procurar(indice: Path, consulta: str, colecao: str | None, quantos: int) -> 
 
     conexao = abrir_indice(indice)
     sql = """
-        SELECT d.nome, d.processo, d.tipo, d.caminho,
+        SELECT d.nome, d.processo, d.tipo,
+               CASE WHEN d.origem IS NULL THEN d.caminho
+                    ELSE d.caminho || '   [de ' || d.origem || ']' END,
                snippet(textos, 0, '>>', '<<', ' ... ', 18) AS excerto
         FROM textos
         JOIN documentos d ON d.id = textos.rowid

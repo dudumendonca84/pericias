@@ -62,6 +62,27 @@ extrai por documento o número de processo CNJ, a vara e o tipo de peça.
 Correr de novo depois de acrescentar perícias novas — só processa o que
 mudou. **É este passo que faz o acervo crescer.**
 
+### Acervo entregue em ZIPs, sem espaço para o descomprimir
+
+Quando o acervo vem do Google Drive em dezenas de ZIPs e o disco não chega
+para os abrir todos:
+
+```bash
+python processar_zips.py --zips "C:/zips-pericias"
+python processar_zips.py --zips "C:/zips-pericias" --apagar-zip
+```
+
+Processa um ZIP de cada vez — extrai, indexa o texto, apaga o que extraiu.
+O pico de disco é o maior ZIP descomprimido, não a soma de todos. Com
+`--apagar-zip` liberta também o ZIP já processado.
+
+É retomável: se interromperes, ou se um ZIP estiver corrompido por o
+download não ter terminado, volta a correr e continua de onde ficou.
+Aborta sozinho se o disco livre descer abaixo de 5 GB.
+
+Os documentos indexados por esta via guardam o nome do ZIP de origem, já
+que a pasta de extração deixa de existir.
+
 ## 3. Consultar
 
 ```bash
