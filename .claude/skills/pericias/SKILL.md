@@ -23,11 +23,11 @@ A pesquisa é em texto integral, ignora acentos e devolve excertos com o
 termo em destaque, o número do processo e o caminho do ficheiro. Ler os
 ficheiros mais relevantes na íntegra antes de redigir.
 
-Para consultar o acervo por metadados em vez de texto:
+Para consultar o acervo por metadados em vez de texto (o cliente `sqlite3`
+não existe no Windows por omissão, por isso usar Python):
 
 ```bash
-sqlite3 acervo_pericias.sqlite \
-  "SELECT nome, processo, vara FROM documentos WHERE tipo='laudo' LIMIT 20;"
+python -c "import sqlite3; [print(r) for r in sqlite3.connect('acervo_pericias.sqlite').execute(\"SELECT nome, processo, vara FROM documentos WHERE tipo='laudo' LIMIT 20\")]"
 ```
 
 Tipos disponíveis: `laudo`, `esclarecimentos`, `quesitos`, `honorarios`,

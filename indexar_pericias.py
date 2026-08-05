@@ -42,7 +42,9 @@ REGRAS_TIPO = [
     ("esclarecimentos", r"esclarecimento"),
     ("laudo", r"\blaudo\b"),
     ("quesitos", r"quesito"),
-    ("honorarios", r"honorari"),
+    # "honorar" e nao "honorari": ha gralhas no acervo ("honoraros") que a
+    # forma mais estrita deixava passar para o balde generico "carta".
+    ("honorarios", r"honorar"),
     ("proposta", r"proposta"),
     ("escusa", r"escusa|foro\s+intimo"),
     ("peticao", r"peti[cç]"),
