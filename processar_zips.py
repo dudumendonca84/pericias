@@ -15,6 +15,7 @@ E retomavel: se interromperes a meio, volta a correr e continua de onde ficou.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sqlite3
 import sys
@@ -92,19 +93,51 @@ def espaco_livre_gb(caminho: Path) -> float:
     return shutil.disk_usage(caminho).free / 1024**3
 
 
-def extrair(zip_path: Path, destino: Path) -> tuple[int, str | None]:
-    """Extrai um ZIP. Devolve (n_ficheiros, erro)."""
+def caminho_longo(p: Path) -> str:
+    r"""Forma do caminho que ignora o limite de 260 caracteres do Windows.
+
+    Os acervos periciais tem arvores muito fundas (relatorios de
+    comissionamento, anexos por disciplina) e estouram MAX_PATH com
+    facilidade. O prefixo \\?\ desliga esse limite, mas exige um caminho
+    absoluto e so com barras invertidas.
+    """
+    if os.name != "nt":
+        return str(p)
+    absoluto = os.path.abspath(str(p))
+    if absoluto.startswith("\\\\?\\"):
+        return absoluto
+    if absoluto.startswith("\\\\"):  # partilha de rede
+        return "\\\\?\\UNC\\" + absoluto[2:]
+    return "\\\\?\\" + absoluto
+
+
+def extrair(zip_path: Path, destino: Path) -> tuple[int, int, str | None]:
+    """Extrai um ZIP ficheiro a ficheiro.
+
+    Devolve (extraidos, saltados, erro_fatal). Extrair membro a membro em vez
+    de chamar extractall e deliberado: um unico caminho problematico fazia
+    abortar o lote inteiro e perdiam-se os milhares de ficheiros bons que
+    vinham no mesmo ZIP.
+    """
     destino.mkdir(parents=True, exist_ok=True)
+    alvo = caminho_longo(destino)
+    extraidos = saltados = 0
     try:
         with zipfile.ZipFile(zip_path) as z:
-            membros = [m for m in z.infolist() if not m.is_dir()]
-            z.extractall(destino)
-        return len(membros), None
+            for membro in z.infolist():
+                if membro.is_dir():
+                    continue
+                try:
+                    z.extract(membro, alvo)
+                    extraidos += 1
+                except Exception:  # noqa: BLE001,PERF203
+                    saltados += 1
     except zipfile.BadZipFile:
         # Tipicamente um download que nao terminou. Nao vale a pena insistir.
-        return 0, "ZIP corrompido ou incompleto"
+        return extraidos, saltados, "ZIP corrompido ou incompleto"
     except Exception as erro:  # noqa: BLE001
-        return 0, f"{type(erro).__name__}: {erro}"
+        return extraidos, saltados, f"{type(erro).__name__}: {erro}"
+    return extraidos, saltados, None
 
 
 def main() -> int:
@@ -136,7 +169,14 @@ def main() -> int:
         print(f"ERRO: pasta nao encontrada: {pasta_zips}", file=sys.stderr)
         return 2
 
-    temp = Path(args.temp).expanduser() if args.temp else pasta_zips / "_extracao"
+    if args.temp:
+        temp = Path(args.temp).expanduser()
+    elif os.name == "nt":
+        # Raiz curta de proposito: cada caracter aqui e um caracter a menos
+        # disponivel para a arvore que vem dentro do ZIP.
+        temp = Path(f"{Path(pasta_zips).drive or 'C:'}\\_x")
+    else:
+        temp = pasta_zips / "_extracao"
     indice = Path(args.indice)
 
     zips = sorted(pasta_zips.glob("*.zip"))
@@ -176,31 +216,38 @@ def main() -> int:
         print(f"[{i}/{len(pendentes)}] {zip_path.name}  ({tamanho_gb:.2f} GB)")
         print(f"disco livre: {livre:.1f} GB")
 
-        if temp.exists():
-            shutil.rmtree(temp, ignore_errors=True)
+        shutil.rmtree(caminho_longo(temp), ignore_errors=True)
 
-        n_membros, erro = extrair(zip_path, temp)
-        if erro:
+        extraidos, saltados, erro = extrair(zip_path, temp)
+        if erro and extraidos == 0:
             print(f"  FALHOU: {erro}")
             falhados.append((zip_path.name, erro))
-            shutil.rmtree(temp, ignore_errors=True)
+            shutil.rmtree(caminho_longo(temp), ignore_errors=True)
             continue
+        if erro:
+            print(f"  AVISO: {erro} -- {extraidos} ficheiros salvos antes disso")
+            falhados.append((zip_path.name, f"parcial: {erro}"))
+        if saltados:
+            # Nunca deixar isto passar em silencio: o acervo tem de ficar
+            # completo, e um ficheiro perdido sem aviso e pior que um erro.
+            print(f"  ATENCAO: {saltados} ficheiro(s) nao extraidos")
+            falhados.append((zip_path.name, f"{saltados} ficheiro(s) nao extraidos"))
 
-        print(f"  extraidos {n_membros} ficheiros, a indexar...")
+        print(f"  extraidos {extraidos} ficheiros, a indexar...")
         antes = contar_documentos(indice)
         marca = maior_id(indice)
         try:
-            indexar(temp, indice, args.colecao, None)
+            indexar(Path(caminho_longo(temp)), indice, args.colecao, None)
         except Exception as erro:  # noqa: BLE001
             print(f"  ERRO ao indexar: {type(erro).__name__}: {erro}")
             falhados.append((zip_path.name, str(erro)))
-            shutil.rmtree(temp, ignore_errors=True)
+            shutil.rmtree(caminho_longo(temp), ignore_errors=True)
             continue
         novos = contar_documentos(indice) - antes
-        fixar_origem(indice, marca, zip_path.name, temp)
+        fixar_origem(indice, marca, zip_path.name, Path(caminho_longo(temp)))
 
         # Apagar antes de passar ao proximo -- e isto que mantem o pico baixo.
-        shutil.rmtree(temp, ignore_errors=True)
+        shutil.rmtree(caminho_longo(temp), ignore_errors=True)
         registar_lote(indice, zip_path.name, zip_path.stat().st_size, novos)
 
         if args.apagar_zip:
