@@ -302,22 +302,35 @@ def procurar(indice: Path, consulta: str, colecao: str | None, quantos: int) -> 
     if colecao:
         sql += " AND d.colecao = ?"
         parametros.append(colecao)
+    # Pedir folga ao motor: as copias sao descartadas a seguir e sem isto
+    # uma pesquisa por 10 devolvia 3 depois de agrupada.
     sql += " ORDER BY rank LIMIT ?"
-    parametros.append(quantos)
+    parametros.append(quantos * 6)
 
     linhas = list(conexao.execute(sql, parametros))
     if not linhas:
         print("Sem resultados.")
         return 0
 
-    for nome, processo, tipo, caminho, excerto in linhas:
+    # Os acervos periciais estao cheios de copias: o mesmo documento em .docx
+    # e .pdf, e a mesma peca replicada por varias pastas (pen drives de cada
+    # parte, pastas de trabalho). Sem agrupar, metade dos resultados sao
+    # repeticoes e o perito perde tempo a abrir a mesma coisa.
+    grupos: dict[str, list] = {}
+    for linha in linhas:
+        chave = sem_acentos(Path(linha[0]).stem).lower().strip()
+        grupos.setdefault(chave, []).append(linha)
+
+    distintos = list(grupos.values())[:quantos]
+    for (nome, processo, tipo, caminho, excerto) in (g[0] for g in distintos):
+        copias = len(grupos[sem_acentos(Path(nome).stem).lower().strip()])
         print(f"\n{'-' * 68}")
-        print(f"{nome}")
+        print(f"{nome}" + (f"   ({copias} copias no acervo)" if copias > 1 else ""))
         print(f"  processo: {processo or '(nao identificado)'}   tipo: {tipo}")
         print(f"  {caminho}")
         print(f"  {' '.join(excerto.split())}")
     print()
-    print(f"{len(linhas)} resultado(s).")
+    print(f"{len(distintos)} documento(s) distinto(s), de {len(linhas)} resultados brutos.")
     conexao.close()
     return 0
 
