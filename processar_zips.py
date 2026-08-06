@@ -73,25 +73,54 @@ def maior_id(indice: Path) -> int:
     return valor
 
 
-def fixar_origem(indice: Path, desde_id: int, zip_nome: str, temp: Path) -> None:
-    """Troca o caminho temporario pelo caminho relativo dentro do ZIP.
+def reparar(indice: Path) -> int:
+    """Repara indices escritos pela versao que normalizava o caminho tarde demais.
 
-    A pasta de extracao e apagada a seguir, por isso guardar o caminho absoluto
-    dela deixaria o indice cheio de caminhos mortos. O que serve ao perito e
-    saber o nome do ficheiro e de que lote veio.
+    Essa versao guardava o caminho absoluto da pasta de extracao e so depois o
+    convertia para relativo, o que duplicava cada documento a cada corrida e
+    rebentava na conversao. Aqui as linhas absolutas ganham o caminho relativo
+    e as antigas duplicadas -- que nao passaram por OCR -- sao descartadas.
     """
-    prefixo = str(temp) + "/"
-    prefixo_win = str(temp) + "\\"
     conexao = abrir_indice(indice)
-    conexao.execute(
-        """UPDATE documentos
-           SET origem = ?,
-               caminho = REPLACE(REPLACE(caminho, ?, ''), ?, '')
-           WHERE id > ?""",
-        (zip_nome, prefixo, prefixo_win, desde_id),
-    )
+    marcadores = ("\\\\?\\", "C:\\_x\\", "/_extracao/", "\\_extracao\\")
+
+    linhas = list(conexao.execute("SELECT id, caminho, caracteres FROM documentos"))
+    absolutos = [
+        (i, c, n) for i, c, n in linhas if any(m in c for m in marcadores)
+    ]
+    if not absolutos:
+        print("Nada a reparar.")
+        conexao.close()
+        return 0
+
+    por_relativo = {c: i for i, c, _ in linhas if not any(m in c for m in marcadores)}
+
+    convertidos = descartados = 0
+    for doc_id, caminho, _ in absolutos:
+        relativo = caminho
+        for marcador in ("_x\\", "_extracao\\", "_x/", "_extracao/"):
+            if marcador in relativo:
+                relativo = relativo.split(marcador, 1)[1]
+                break
+
+        antigo = por_relativo.get(relativo)
+        if antigo is not None:
+            # A linha nova traz o texto do OCR; a antiga nao. Fica a nova.
+            conexao.execute("DELETE FROM textos WHERE rowid = ?", (antigo,))
+            conexao.execute("DELETE FROM documentos WHERE id = ?", (antigo,))
+            descartados += 1
+        conexao.execute(
+            "UPDATE documentos SET caminho = ? WHERE id = ?", (relativo, doc_id)
+        )
+        convertidos += 1
+
     conexao.commit()
+    total = conexao.execute("SELECT COUNT(*) FROM documentos").fetchone()[0]
     conexao.close()
+    print(f"Caminhos corrigidos : {convertidos}")
+    print(f"Duplicados removidos: {descartados}")
+    print(f"Total no indice     : {total} documentos")
+    return 0
 
 
 def espaco_livre_gb(caminho: Path) -> float:
@@ -149,7 +178,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Indexa um acervo em ZIPs processando um de cada vez."
     )
-    parser.add_argument("--zips", required=True, help="pasta com os ficheiros .zip")
+    parser.add_argument("--zips", help="pasta com os ficheiros .zip")
+    parser.add_argument(
+        "--reparar",
+        action="store_true",
+        help="corrige um indice deixado inconsistente por versoes anteriores",
+    )
     parser.add_argument(
         "--temp",
         help="pasta de trabalho (por omissao, uma subpasta de --zips)",
@@ -175,6 +209,12 @@ def main() -> int:
         help="aborta se o disco livre descer abaixo disto",
     )
     args = parser.parse_args()
+
+    if args.reparar:
+        return reparar(Path(args.indice))
+
+    if not args.zips:
+        parser.error("indica --zips")
 
     pasta_zips = Path(args.zips).expanduser()
     if not pasta_zips.is_dir():
@@ -254,7 +294,6 @@ def main() -> int:
 
         print(f"  extraidos {extraidos} ficheiros, a indexar...")
         antes = contar_documentos(indice)
-        marca = maior_id(indice)
         try:
             indexar(
                 Path(caminho_longo(temp)),
@@ -264,6 +303,8 @@ def main() -> int:
                 args.ocr,
                 args.lingua,
                 args.dpi,
+                Path(caminho_longo(temp)),
+                zip_path.name,
             )
         except Exception as erro:  # noqa: BLE001
             print(f"  ERRO ao indexar: {type(erro).__name__}: {erro}")
@@ -271,7 +312,6 @@ def main() -> int:
             shutil.rmtree(caminho_longo(temp), ignore_errors=True)
             continue
         novos = contar_documentos(indice) - antes
-        fixar_origem(indice, marca, zip_path.name, Path(caminho_longo(temp)))
 
         # Apagar antes de passar ao proximo -- e isto que mantem o pico baixo.
         shutil.rmtree(caminho_longo(temp), ignore_errors=True)

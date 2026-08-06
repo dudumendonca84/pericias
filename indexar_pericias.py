@@ -236,9 +236,14 @@ def indexar(
     ocr: bool = False,
     lingua: str = "por",
     dpi: int = 200,
+    raiz: Path | None = None,
+    origem: str | None = None,
 ) -> int:
     conexao = abrir_indice(indice)
 
+    # A identidade e o caminho relativo, nao o absoluto: quando o acervo vem
+    # de ZIPs, a pasta de extracao muda entre corridas e o mesmo documento
+    # entrava outra vez como novo.
     ja_indexados = {
         linha[0]: (linha[1], linha[2])
         for linha in conexao.execute("SELECT caminho, mtime, bytes FROM documentos")
@@ -262,7 +267,7 @@ def indexar(
     inicio = time.monotonic()
 
     for i, caminho in enumerate(ficheiros, 1):
-        chave = str(caminho)
+        chave = str(caminho.relative_to(raiz)) if raiz else str(caminho)
         try:
             estatisticas = caminho.stat()
         except OSError:
@@ -270,7 +275,10 @@ def indexar(
             continue
 
         anterior = ja_indexados.get(chave)
-        if anterior and abs(anterior[0] - estatisticas.st_mtime) < 1 and anterior[1] == estatisticas.st_size:
+        # Comparar so o tamanho: a extracao de um ZIP carimba mtime novo, e
+        # exigir mtime igual obrigava a repetir o OCR do acervo inteiro a
+        # cada corrida -- horas de trabalho deitadas fora.
+        if anterior and anterior[1] == estatisticas.st_size:
             inalterados += 1
             continue
 
@@ -289,7 +297,7 @@ def indexar(
         campos = (
             caminho.name, colecao, caminho.suffix.lower(), estatisticas.st_size,
             estatisticas.st_mtime, estado, processo, vara, tipo,
-            caracteres, paginas, time.time(),
+            caracteres, paginas, time.time(), origem,
         )
 
         if linha:
@@ -297,7 +305,7 @@ def indexar(
             conexao.execute(
                 """UPDATE documentos SET nome=?, colecao=?, extensao=?, bytes=?,
                    mtime=?, estado=?, processo=?, vara=?, tipo=?, caracteres=?,
-                   paginas=?, indexado_em=? WHERE id=?""",
+                   paginas=?, indexado_em=?, origem=? WHERE id=?""",
                 (*campos, doc_id),
             )
             conexao.execute("DELETE FROM textos WHERE rowid = ?", (doc_id,))
@@ -305,8 +313,9 @@ def indexar(
         else:
             cursor = conexao.execute(
                 """INSERT INTO documentos (caminho, nome, colecao, extensao, bytes,
-                   mtime, estado, processo, vara, tipo, caracteres, paginas, indexado_em)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   mtime, estado, processo, vara, tipo, caracteres, paginas,
+                   indexado_em, origem)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (chave, *campos),
             )
             doc_id = cursor.lastrowid
