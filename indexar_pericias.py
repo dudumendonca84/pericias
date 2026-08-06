@@ -245,8 +245,10 @@ def indexar(
     # de ZIPs, a pasta de extracao muda entre corridas e o mesmo documento
     # entrava outra vez como novo.
     ja_indexados = {
-        linha[0]: (linha[1], linha[2])
-        for linha in conexao.execute("SELECT caminho, mtime, bytes FROM documentos")
+        linha[0]: (linha[1], linha[2], linha[3])
+        for linha in conexao.execute(
+            "SELECT caminho, mtime, bytes, estado FROM documentos"
+        )
     }
 
     ficheiros = [
@@ -278,9 +280,16 @@ def indexar(
         # Comparar so o tamanho: a extracao de um ZIP carimba mtime novo, e
         # exigir mtime igual obrigava a repetir o OCR do acervo inteiro a
         # cada corrida -- horas de trabalho deitadas fora.
+        #
+        # Mas "inalterado" nao pode significar "salta": um documento indexado
+        # sem OCR ficou sem texto, e se esta corrida traz OCR ele tem de ser
+        # relido. Saltar so quando o que esta guardado ja e tao bom como o que
+        # esta corrida produziria.
         if anterior and anterior[1] == estatisticas.st_size:
-            inalterados += 1
-            continue
+            falta_ocr = ocr and anterior[2] == "ocr"
+            if not falta_ocr:
+                inalterados += 1
+                continue
 
         estado, texto, caracteres, paginas = extrair_texto(caminho, ocr, lingua, dpi)
         if estado == "ocr-lido":
