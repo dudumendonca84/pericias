@@ -14,6 +14,7 @@ processa o que mudou -- e assim que o acervo "aprende".
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sqlite3
 import sys
@@ -98,7 +99,52 @@ def abrir_indice(caminho: Path) -> sqlite3.Connection:
     return conexao
 
 
-def extrair_texto(caminho: Path) -> tuple[str, str, int, int]:
+def localizar_tessdata() -> str | None:
+    """Encontra a pasta tessdata do Tesseract.
+
+    O PyMuPDF delega o OCR no Tesseract e precisa de TESSDATA_PREFIX apontado
+    aos ficheiros de lingua. No Windows o instalador nem sempre define a
+    variavel, por isso vale a pena procurar nos sitios habituais.
+    """
+    if os.environ.get("TESSDATA_PREFIX"):
+        return os.environ["TESSDATA_PREFIX"]
+
+    candidatos = [
+        r"C:\Program Files\Tesseract-OCR\tessdata",
+        r"C:\Program Files (x86)\Tesseract-OCR\tessdata",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tessdata"),
+        "/usr/share/tesseract-ocr/5/tessdata",
+        "/usr/share/tesseract-ocr/4.00/tessdata",
+        "/usr/share/tessdata",
+        "/opt/homebrew/share/tessdata",
+    ]
+    for c in candidatos:
+        if c and Path(c).is_dir():
+            os.environ["TESSDATA_PREFIX"] = c
+            return c
+    return None
+
+
+def ocr_pdf(caminho: Path, lingua: str, dpi: int) -> tuple[str, int]:
+    """Le um PDF digitalizado pagina a pagina via OCR. Devolve (texto, paginas)."""
+    import fitz
+
+    partes = []
+    with fitz.open(caminho) as doc:
+        for pagina in doc:
+            try:
+                tp = pagina.get_textpage_ocr(language=lingua, dpi=dpi, full=True)
+                partes.append(pagina.get_text(textpage=tp))
+            except Exception:  # noqa: BLE001,PERF203
+                # Uma pagina ilegivel nao pode custar o documento inteiro.
+                continue
+        paginas = doc.page_count
+    return "".join(partes), paginas
+
+
+def extrair_texto(
+    caminho: Path, ocr: bool = False, lingua: str = "por", dpi: int = 200
+) -> tuple[str, str, int, int]:
     """Devolve (estado, texto, caracteres, paginas).
 
     Reaproveita o classificador do diagnostico para decidir o estado e so
@@ -106,6 +152,16 @@ def extrair_texto(caminho: Path) -> tuple[str, str, int, int]:
     implementacoes da mesma logica a divergirem com o tempo.
     """
     resultado = analisar(caminho)
+
+    # Digitalizacoes: sem OCR ficam no indice como metadados, invisiveis a
+    # qualquer pesquisa por conteudo. E a maior fatia de um acervo pericial.
+    if resultado.estado == "ocr" and ocr and caminho.suffix.lower() == ".pdf":
+        texto, paginas = ocr_pdf(caminho, lingua, dpi)
+        caracteres = len(texto.strip())
+        if caracteres:
+            return "ocr-lido", texto, caracteres, paginas
+        return "ocr", "", 0, paginas
+
     if resultado.estado != "ok":
         return resultado.estado, "", resultado.caracteres, resultado.paginas
 
@@ -172,7 +228,15 @@ def inferir_vara(nome: str, texto: str) -> str | None:
     return None
 
 
-def indexar(pasta: Path, indice: Path, colecao: str, limite: int | None) -> int:
+def indexar(
+    pasta: Path,
+    indice: Path,
+    colecao: str,
+    limite: int | None,
+    ocr: bool = False,
+    lingua: str = "por",
+    dpi: int = 200,
+) -> int:
     conexao = abrir_indice(indice)
 
     ja_indexados = {
@@ -194,7 +258,7 @@ def indexar(pasta: Path, indice: Path, colecao: str, limite: int | None) -> int:
     print(f"Indice  : {indice.resolve()}")
     print(f"Candidatos: {len(ficheiros)}")
 
-    novos = atualizados = inalterados = falhados = 0
+    novos = atualizados = inalterados = falhados = lidos_ocr = 0
     inicio = time.monotonic()
 
     for i, caminho in enumerate(ficheiros, 1):
@@ -210,8 +274,10 @@ def indexar(pasta: Path, indice: Path, colecao: str, limite: int | None) -> int:
             inalterados += 1
             continue
 
-        estado, texto, caracteres, paginas = extrair_texto(caminho)
-        if estado != "ok":
+        estado, texto, caracteres, paginas = extrair_texto(caminho, ocr, lingua, dpi)
+        if estado == "ocr-lido":
+            lidos_ocr += 1
+        elif estado != "ok":
             falhados += 1
 
         processo = inferir_processo(caminho.name, texto)
@@ -263,6 +329,8 @@ def indexar(pasta: Path, indice: Path, colecao: str, limite: int | None) -> int:
     print(f"Atualizados : {atualizados}")
     print(f"Inalterados : {inalterados}")
     print(f"Sem texto   : {falhados}")
+    if ocr:
+        print(f"Lidos por OCR: {lidos_ocr}")
     print(f"Tempo       : {segundos:.1f}s")
 
     total = conexao.execute("SELECT COUNT(*) FROM documentos").fetchone()[0]
@@ -349,6 +417,13 @@ def main() -> int:
     parser.add_argument("--limite", type=int)
     parser.add_argument("--procurar", help="pesquisa em texto integral no indice")
     parser.add_argument("--quantos", type=int, default=10)
+    parser.add_argument(
+        "--ocr",
+        action="store_true",
+        help="ler digitalizacoes por OCR (lento, mas recupera-as para a pesquisa)",
+    )
+    parser.add_argument("--lingua", default="por", help="lingua do OCR (por, eng, spa...)")
+    parser.add_argument("--dpi", type=int, default=200, help="resolucao do OCR")
     args = parser.parse_args()
 
     indice = Path(args.indice)
@@ -364,7 +439,16 @@ def main() -> int:
         print(f"ERRO: pasta nao encontrada: {pasta}", file=sys.stderr)
         return 2
 
-    return indexar(pasta, indice, args.colecao, args.limite)
+    if args.ocr and not localizar_tessdata():
+        print(
+            "ERRO: Tesseract nao encontrado. Instala-o e/ou define TESSDATA_PREFIX "
+            "a apontar para a pasta tessdata.",
+            file=sys.stderr,
+        )
+        return 2
+    return indexar(
+        pasta, indice, args.colecao, args.limite, args.ocr, args.lingua, args.dpi
+    )
 
 
 if __name__ == "__main__":

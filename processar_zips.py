@@ -23,7 +23,12 @@ import time
 import zipfile
 from pathlib import Path
 
-from indexar_pericias import INDICE_PREDEFINIDO, abrir_indice, indexar
+from indexar_pericias import (
+    INDICE_PREDEFINIDO,
+    abrir_indice,
+    indexar,
+    localizar_tessdata,
+)
 
 TABELA_LOTES = """
 CREATE TABLE IF NOT EXISTS lotes (
@@ -157,6 +162,13 @@ def main() -> int:
         help="apagar cada ZIP depois de indexado (liberta disco a meio do processo)",
     )
     parser.add_argument(
+        "--ocr",
+        action="store_true",
+        help="ler digitalizacoes por OCR (muito mais lento, recupera-as para a pesquisa)",
+    )
+    parser.add_argument("--lingua", default="por")
+    parser.add_argument("--dpi", type=int, default=200)
+    parser.add_argument(
         "--minimo-livre-gb",
         type=float,
         default=5.0,
@@ -178,6 +190,13 @@ def main() -> int:
     else:
         temp = pasta_zips / "_extracao"
     indice = Path(args.indice)
+
+    if args.ocr and not localizar_tessdata():
+        print(
+            "ERRO: Tesseract nao encontrado. Instala-o e/ou define TESSDATA_PREFIX.",
+            file=sys.stderr,
+        )
+        return 2
 
     zips = sorted(pasta_zips.glob("*.zip"))
     if not zips:
@@ -237,7 +256,15 @@ def main() -> int:
         antes = contar_documentos(indice)
         marca = maior_id(indice)
         try:
-            indexar(Path(caminho_longo(temp)), indice, args.colecao, None)
+            indexar(
+                Path(caminho_longo(temp)),
+                indice,
+                args.colecao,
+                None,
+                args.ocr,
+                args.lingua,
+                args.dpi,
+            )
         except Exception as erro:  # noqa: BLE001
             print(f"  ERRO ao indexar: {type(erro).__name__}: {erro}")
             falhados.append((zip_path.name, str(erro)))

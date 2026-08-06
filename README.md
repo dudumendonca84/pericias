@@ -83,6 +83,37 @@ Aborta sozinho se o disco livre descer abaixo de 5 GB.
 Os documentos indexados por esta via guardam o nome do ZIP de origem, já
 que a pasta de extração deixa de existir.
 
+### OCR — recuperar as digitalizações
+
+Num acervo pericial a maior parte dos PDFs costuma ser digitalização: são
+fotografias de páginas, sem letras lá dentro. Entram no índice pelo nome mas
+nenhuma pesquisa por conteúdo os encontra.
+
+Precisa do [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
+instalado, com o pacote de português:
+
+```bash
+winget install UB-Mannheim.TesseractOCR
+```
+
+Depois basta acrescentar `--ocr`:
+
+```bash
+python indexar_pericias.py --pasta "C:/acervo" --ocr
+python processar_zips.py --zips "C:/zips-pericias" --ocr
+```
+
+Conta com 1 a 3 segundos por página — um acervo de milhares de documentos
+leva horas. Deixa-se a correr de noite; é retomável como o resto.
+
+Os documentos lidos por esta via ficam com estado `ocr-lido`, para se
+distinguirem dos que já nasceram digitais. A qualidade depende da
+digitalização: páginas direitas e limpas dão texto quase perfeito, páginas
+tortas ou com carimbos dão texto com erros — ainda assim pesquisável.
+
+Se o Tesseract não estiver instalado, `--ocr` avisa e não faz nada em vez
+de indexar em silêncio sem OCR.
+
 ## 3. Consultar
 
 ```bash
