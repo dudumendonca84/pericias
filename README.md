@@ -7,7 +7,23 @@ de uma skill do Claude Code ao redigir peças novas.
 **Os documentos nunca saem da máquina.** Este repositório contém apenas
 código. O acervo, o índice e tudo o que dele deriva estão no `.gitignore`.
 
-## Instalação
+## Instalação numa máquina nova, num comando
+
+No PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/dudumendonca84/pericias/claude/diagnostico-laudos-periciais-9wrgvl/instalar.ps1 | iex
+```
+
+Descarrega o programa, instala o Python se faltar, instala os pacotes com o
+contorno de SSL que as redes com proxy corporativo exigem, e liga o acervo ao
+Claude Desktop. Numa instalação já existente actualiza só o programa — o
+acervo e a configuração ficam onde estão.
+
+Não descarrega nem envia documentos: o acervo é sempre local. Falta só copiar
+para lá o `acervo_pericias.sqlite`, ou construí-lo com `python configurar.py`.
+
+## Instalação manual
 
 Requer Python 3.10+.
 
