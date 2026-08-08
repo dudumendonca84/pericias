@@ -9,19 +9,31 @@ código. O acervo, o índice e tudo o que dele deriva estão no `.gitignore`.
 
 ## Instalação
 
-Requer Python 3.10+ e o Claude Code instalado.
+Requer Python 3.10+.
 
 ```bash
 git clone https://github.com/dudumendonca84/pericias
 cd pericias
-pip install pymupdf python-docx
 ```
 
-Se o pip falhar por SSL (típico em redes com Zscaler ou proxy corporativo):
+Depois, duplo clique em **`Instalar.bat`** — ou, na linha de comandos:
 
 ```bash
-pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org pymupdf python-docx
+python configurar.py
 ```
+
+A configuração verifica as dependências e instala-as (com o contorno de SSL
+que as redes com proxy corporativo exigem), deteta o Tesseract para o OCR,
+pergunta onde está o acervo, cria o atalho de pesquisa no ambiente de
+trabalho, e constrói o índice. A pasta fica guardada em `config.json`, e a
+partir daí os comandos deixam de precisar de argumentos.
+
+**Perícias novas:** duplo clique em `Atualizar Acervo.bat`, ou
+`python atualizar.py`. Só processa o que mudou, e volta a aplicar as regras
+de classificação ao que já estava indexado.
+
+**Procurar sem terminal:** o atalho `Procurar Pericias` abre uma janela onde
+se escreve a pergunta em linguagem normal.
 
 ## 1. Diagnosticar o corpus
 
