@@ -15,9 +15,9 @@ No PowerShell:
 irm https://raw.githubusercontent.com/dudumendonca84/pericias/claude/diagnostico-laudos-periciais-9wrgvl/instalar.ps1 | iex
 ```
 
-Descarrega o programa, instala o Python se faltar, instala os pacotes com o
-contorno de SSL que as redes com proxy corporativo exigem, e liga o acervo ao
-Claude Desktop. Numa instalação já existente actualiza só o programa — o
+Descarrega o programa e instala o que falta — Python, os pacotes (com o
+contorno de SSL que as redes com proxy corporativo exigem), o Tesseract e o
+pacote de português para o OCR — e liga o acervo ao Claude Desktop. Numa instalação já existente actualiza só o programa — o
 acervo e a configuração ficam onde estão.
 
 Para trazer também o acervo, define o link antes de correr:

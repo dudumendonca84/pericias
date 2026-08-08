@@ -110,14 +110,61 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "  instalados" -ForegroundColor Green
 
+# ---------------------------------------------------------------- OCR
+Passo 4 "OCR (Tesseract)"
+# Num acervo pericial a maioria dos PDFs e digitalizacao. Sem OCR essas pecas
+# entram no indice pelo nome e ficam invisiveis a qualquer pesquisa por
+# conteudo -- que e a razao de existir do indice.
+$tessdata = @(
+    "$env:LOCALAPPDATA\Programs\Tesseract-OCR\tessdata",
+    "$env:ProgramFiles\Tesseract-OCR\tessdata",
+    "${env:ProgramFiles(x86)}\Tesseract-OCR\tessdata"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $tessdata) {
+    Write-Host "  nao instalado; a instalar..."
+    try {
+        winget install --silent --accept-package-agreements --accept-source-agreements UB-Mannheim.TesseractOCR
+        $tessdata = @(
+            "$env:LOCALAPPDATA\Programs\Tesseract-OCR\tessdata",
+            "$env:ProgramFiles\Tesseract-OCR\tessdata",
+            "${env:ProgramFiles(x86)}\Tesseract-OCR\tessdata"
+        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    } catch { }
+}
+
+if ($tessdata) {
+    Write-Host "  $tessdata" -ForegroundColor Green
+    $portugues = Join-Path $tessdata "por.traineddata"
+    if (-not (Test-Path $portugues)) {
+        # O instalador do Tesseract traz so ingles. Sem o portugues, o OCR le
+        # os laudos com o modelo errado e erra os acentos em cada palavra.
+        Write-Host "  a descarregar o portugues..."
+        try {
+            Invoke-WebRequest -UseBasicParsing `
+                -Uri "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/por.traineddata" `
+                -OutFile $portugues
+            Write-Host "  portugues instalado" -ForegroundColor Green
+        } catch {
+            Write-Host "  nao consegui descarregar o portugues: $_" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  portugues ja instalado" -ForegroundColor Green
+    }
+} else {
+    Write-Host "  NAO INSTALADO." -ForegroundColor Yellow
+    Write-Host "  As pericias digitalizadas ficarao fora da pesquisa."
+    Write-Host "  Instala a mao de https://github.com/UB-Mannheim/tesseract/wiki"
+}
+
 # ---------------------------------------------------------------- Claude
-Passo 4 "Ligar ao Claude Desktop"
+Passo 5 "Ligar ao Claude Desktop"
 Push-Location $destino
 & $python instalar_mcp.py
 Pop-Location
 
 # ---------------------------------------------------------------- acervo
-Passo 5 "Acervo"
+Passo 6 "Acervo"
 $acervo = Join-Path $destino "acervo_pericias.sqlite"
 
 if ($env:ACERVO_URL -and -not (Test-Path $acervo)) {

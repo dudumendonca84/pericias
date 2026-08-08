@@ -111,7 +111,7 @@ def verificar_ocr() -> bool:
         print("  Sem OCR, as pericias digitalizadas ficam fora da pesquisa.")
         print("  Para instalar:  winget install UB-Mannheim.TesseractOCR")
         print("  E depois o portugues, de")
-        print("  https://github.com/tesseract-ocr/tessdata/raw/main/por.traineddata")
+        print("  https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/por.traineddata")
         print("  para a pasta tessdata da instalacao.")
         return False
 
