@@ -419,6 +419,37 @@ def indexar(
     return 0
 
 
+def consolidar_varas(conexao: sqlite3.Connection) -> int:
+    """Funde varas em que uma e prefixo da outra.
+
+    O texto de origem aparece cortado a meio com frequencia, e "Comarca Duque"
+    e "Comarca Duque De Caxias" acabam como dois juizos distintos. Quando uma
+    forma e prefixo de outra com o mesmo numero e especialidade, a mais longa
+    e a completa e as duas devem contar como uma.
+    """
+    valores = [
+        linha[0]
+        for linha in conexao.execute(
+            "SELECT DISTINCT vara FROM documentos WHERE vara IS NOT NULL"
+        )
+    ]
+    # Da mais longa para a mais curta: assim cada forma curta encontra logo a
+    # versao completa de que e prefixo.
+    ordenadas = sorted(valores, key=len, reverse=True)
+
+    trocas = 0
+    for curta in valores:
+        for longa in ordenadas:
+            if longa != curta and longa.startswith(curta):
+                conexao.execute(
+                    "UPDATE documentos SET vara = ? WHERE vara = ?", (longa, curta)
+                )
+                trocas += 1
+                break
+    conexao.commit()
+    return trocas
+
+
 def renormalizar(indice: Path) -> int:
     """Volta a derivar processo, vara e tipo a partir do texto ja indexado.
 
@@ -455,6 +486,8 @@ def renormalizar(indice: Path) -> int:
         )
     conexao.commit()
 
+    consolidadas = consolidar_varas(conexao)
+
     varas = conexao.execute(
         "SELECT COUNT(DISTINCT vara) FROM documentos WHERE vara IS NOT NULL"
     ).fetchone()[0]
@@ -467,6 +500,7 @@ def renormalizar(indice: Path) -> int:
     print(f"Vara corrigida      : {mudou_vara}")
     print(f"Processo corrigido  : {mudou_processo}")
     print(f"Tipo corrigido      : {mudou_tipo}")
+    print(f"Varas consolidadas  : {consolidadas}")
     print()
     print(f"Varas distintas     : {varas}")
     print(f"Processos distintos : {processos}")
