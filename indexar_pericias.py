@@ -45,6 +45,14 @@ PADRAO_VARA = re.compile(
     re.IGNORECASE,
 )
 
+# "32a VC", "2ª VC CC", "3a. VC de Alcantara": e assim que o perito nomeia os
+# ficheiros. Sem reconhecer a abreviatura, o nome do ficheiro nao dizia nada e
+# a vara acabava tirada do corpo do texto -- que cita outros juizos e atribuia
+# a peca a vara errada.
+PADRAO_VARA_ABREVIADA = re.compile(
+    r"\b(\d{1,2})\s*[ªaº°]?\.?\s*V\.?\s?C\b", re.IGNORECASE
+)
+
 # Palavras que aparecem coladas ao nome da comarca e nao fazem parte dele.
 RUIDO_COMARCA = re.compile(
     r"\b(ESTADO|RIO\s+DE\s+JANEIRO|RJ|PROCESSO|AUTOR|REU|RÉU)\b.*$",
@@ -54,7 +62,9 @@ RUIDO_COMARCA = re.compile(
 # Tipo de peca inferido do nome do ficheiro. A ordem importa: a primeira
 # regra que casar ganha, por isso as mais especificas vem primeiro.
 REGRAS_TIPO = [
-    ("esclarecimentos", r"esclarecimento"),
+    # "esclarecimantos" aparece escrito assim no acervo; a forma estrita
+    # deixava essas pecas cairem no balde "laudo".
+    ("esclarecimentos", r"esclarecim"),
     ("laudo", r"\blaudo\b"),
     ("quesitos", r"quesito"),
     # "honorar" e nao "honorari": ha gralhas no acervo ("honoraros") que a
@@ -247,6 +257,8 @@ def inferir_processo(nome: str, texto: str) -> str | None:
 
 def normalizar_vara(numero: str, especialidade: str, comarca: str | None) -> str:
     """Recompoe a vara numa forma unica, para as variantes colapsarem numa so."""
+    # As duas vias -- "VARA CÍVEL" no texto e "VC" no nome do ficheiro --
+    # tem de produzir a mesma cadeia, senao nao fundem por prefixo.
     especialidade = especialidade.strip().capitalize()
 
     if comarca:
@@ -269,11 +281,17 @@ def normalizar_vara(numero: str, especialidade: str, comarca: str | None) -> str
 
 
 def inferir_vara(nome: str, texto: str) -> str | None:
+    # O nome do ficheiro tem prioridade sobre o corpo do texto: e o perito que
+    # o escreve, sabendo de que processo se trata, enquanto o texto cita varas
+    # de outros processos ao longo da fundamentacao.
     for fonte in (nome, texto[:4000]):
         encontrado = PADRAO_VARA.search(fonte)
         if encontrado:
             numero, especialidade, comarca = encontrado.groups()
             return normalizar_vara(numero, especialidade, comarca)
+        abreviada = PADRAO_VARA_ABREVIADA.search(fonte)
+        if abreviada:
+            return normalizar_vara(abreviada.group(1), "Cível", None)
     return None
 
 
