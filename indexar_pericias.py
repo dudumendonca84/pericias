@@ -103,7 +103,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS textos USING fts5(
 
 
 def abrir_indice(caminho: Path) -> sqlite3.Connection:
-    conexao = sqlite3.connect(caminho)
+    # timeout: uma indexacao com OCR segura o ficheiro durante minutos. Sem
+    # espera, um segundo processo -- ou a janela de pesquisa aberta ao lado --
+    # falhava de imediato com "database is locked" e perdia-se o lote inteiro.
+    conexao = sqlite3.connect(caminho, timeout=120)
+    # WAL deixa ler enquanto se escreve: consultar o acervo a meio de uma
+    # indexacao longa passa a ser possivel em vez de bloquear as duas coisas.
+    conexao.execute("PRAGMA journal_mode=WAL")
+    conexao.execute("PRAGMA busy_timeout=120000")
     conexao.executescript(ESQUEMA)
     # Indices criados antes de a coluna existir continuam a abrir sem erro.
     colunas = {linha[1] for linha in conexao.execute("PRAGMA table_info(documentos)")}

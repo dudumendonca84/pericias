@@ -310,6 +310,11 @@ def main() -> int:
         except Exception as erro:  # noqa: BLE001
             print(f"  ERRO ao indexar: {type(erro).__name__}: {erro}")
             falhados.append((zip_path.name, str(erro)))
+            if "locked" in str(erro).lower():
+                print(
+                    "  (o indice estava a ser escrito por outro processo -- "
+                    "nao corras duas indexacoes ao mesmo tempo)"
+                )
             shutil.rmtree(caminho_longo(temp), ignore_errors=True)
             continue
         novos = contar_documentos(indice) - antes
@@ -334,9 +339,15 @@ def main() -> int:
     if falhados:
         print()
         print(f"{len(falhados)} ZIP(s) falharam:")
+        bloqueio = False
         for nome, erro in falhados:
             print(f"  {nome}: {erro}")
-        print("Volta a descarrega-los e corre outra vez -- so estes serao processados.")
+            bloqueio = bloqueio or "locked" in erro.lower()
+        if bloqueio:
+            # Culpar o ZIP aqui manda a pessoa descarregar 2 GB por nada.
+            print("Fecha as outras indexacoes e corre outra vez -- os ZIPs estao bons.")
+        else:
+            print("Volta a descarrega-los e corre outra vez -- so estes serao processados.")
 
     return 0
 
