@@ -33,8 +33,22 @@ INDICE_PREDEFINIDO = Path("acervo_pericias.sqlite")
 
 # Numeracao unica CNJ: NNNNNNN-DD.AAAA.J.TR.OOOO
 PADRAO_PROCESSO = re.compile(r"\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b")
+# Numero da vara, especialidade e comarca, capturados em separado para se
+# poderem recompor numa forma unica. Apanhar a linha inteira nao serve: o mesmo
+# juizo aparece escrito de meia duzia de maneiras -- "1a" e "1ª", com e sem
+# "DO ESTADO DO RIO DE JANEIRO", cortado a meio, com caracteres colados do
+# texto seguinte -- e cada variante contava como uma vara diferente.
 PADRAO_VARA = re.compile(
-    r"\b(\d{1,2}\s*[ªa]?\s*VARA[^\n,.]{0,60})", re.IGNORECASE
+    r"\b(\d{1,2})\s*[ªaº°]?\s*VARA\s+([A-ZÁÉÍÓÚÂÊÔÃÕÇ]+)"
+    r"(?:\s+(?:D[AEO]S?\s+)?COMARCA\s+(?:D[AEO]S?\s+)?([A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]{3,40}?))?"
+    r"(?=\s*(?:[-–—,.]|\bDO\s+ESTADO\b|\bESTADO\b|$|\n))",
+    re.IGNORECASE,
+)
+
+# Palavras que aparecem coladas ao nome da comarca e nao fazem parte dele.
+RUIDO_COMARCA = re.compile(
+    r"\b(ESTADO|RIO\s+DE\s+JANEIRO|RJ|PROCESSO|AUTOR|REU|RÉU)\b.*$",
+    re.IGNORECASE,
 )
 
 # Tipo de peca inferido do nome do ficheiro. A ordem importa: a primeira
@@ -224,11 +238,35 @@ def inferir_processo(nome: str, texto: str) -> str | None:
     return None
 
 
+def normalizar_vara(numero: str, especialidade: str, comarca: str | None) -> str:
+    """Recompoe a vara numa forma unica, para as variantes colapsarem numa so."""
+    especialidade = especialidade.strip().capitalize()
+
+    if comarca:
+        comarca = RUIDO_COMARCA.sub("", comarca).strip(" -–—,.")
+        comarca = " ".join(comarca.split())
+        # Uma captura cortada deixa a preposicao pendurada ("Capital do"),
+        # e isso bastava para a variante nao colapsar com as outras.
+        comarca = re.sub(r"\s+\b(d[aeo]s?|e)\b\s*$", "", comarca, flags=re.IGNORECASE)
+        # Sobras de uma captura que apanhou pouco ("DO", "DA") nao identificam
+        # comarca nenhuma e valem menos que omitir o campo.
+        if len(comarca) < 3:
+            comarca = ""
+    else:
+        comarca = ""
+
+    vara = f"{int(numero)}ª Vara {especialidade}"
+    if comarca:
+        vara += f" — Comarca {comarca.title()}"
+    return vara
+
+
 def inferir_vara(nome: str, texto: str) -> str | None:
     for fonte in (nome, texto[:4000]):
         encontrado = PADRAO_VARA.search(fonte)
         if encontrado:
-            return " ".join(encontrado.group(1).split())[:80]
+            numero, especialidade, comarca = encontrado.groups()
+            return normalizar_vara(numero, especialidade, comarca)
     return None
 
 
@@ -374,6 +412,60 @@ def indexar(
     return 0
 
 
+def renormalizar(indice: Path) -> int:
+    """Volta a derivar processo, vara e tipo a partir do texto ja indexado.
+
+    As regras de extracao melhoram com o tempo -- a da vara passou a colapsar
+    as variantes de escrita do mesmo juizo, por exemplo. Reindexar o acervo
+    para isso seria absurdo: implicaria repetir o OCR, que sao horas. O texto
+    ja esta guardado, por isso basta correr as regras novas sobre ele.
+    """
+    conexao = abrir_indice(indice)
+    linhas = list(
+        conexao.execute(
+            """SELECT d.id, d.nome, d.processo, d.vara, d.tipo, t.texto
+               FROM documentos d LEFT JOIN textos t ON t.rowid = d.id"""
+        )
+    )
+
+    mudou_vara = mudou_processo = mudou_tipo = 0
+    for doc_id, nome, processo, vara, tipo, texto in linhas:
+        texto = texto or ""
+        novo_processo = inferir_processo(nome, texto)
+        nova_vara = inferir_vara(nome, texto)
+        novo_tipo = inferir_tipo(nome)
+
+        if novo_processo != processo:
+            mudou_processo += 1
+        if nova_vara != vara:
+            mudou_vara += 1
+        if novo_tipo != tipo:
+            mudou_tipo += 1
+
+        conexao.execute(
+            "UPDATE documentos SET processo = ?, vara = ?, tipo = ? WHERE id = ?",
+            (novo_processo, nova_vara, novo_tipo, doc_id),
+        )
+    conexao.commit()
+
+    varas = conexao.execute(
+        "SELECT COUNT(DISTINCT vara) FROM documentos WHERE vara IS NOT NULL"
+    ).fetchone()[0]
+    processos = conexao.execute(
+        "SELECT COUNT(DISTINCT processo) FROM documentos WHERE processo IS NOT NULL"
+    ).fetchone()[0]
+    conexao.close()
+
+    print(f"Documentos revistos : {len(linhas)}")
+    print(f"Vara corrigida      : {mudou_vara}")
+    print(f"Processo corrigido  : {mudou_processo}")
+    print(f"Tipo corrigido      : {mudou_tipo}")
+    print()
+    print(f"Varas distintas     : {varas}")
+    print(f"Processos distintos : {processos}")
+    return 0
+
+
 def procurar(indice: Path, consulta: str, colecao: str | None, quantos: int) -> int:
     if not indice.exists():
         print(f"ERRO: indice nao existe: {indice}", file=sys.stderr)
@@ -440,6 +532,11 @@ def main() -> int:
     parser.add_argument("--indice", default=str(INDICE_PREDEFINIDO))
     parser.add_argument("--limite", type=int)
     parser.add_argument("--procurar", help="pesquisa em texto integral no indice")
+    parser.add_argument(
+        "--renormalizar",
+        action="store_true",
+        help="volta a derivar processo, vara e tipo do texto ja indexado",
+    )
     parser.add_argument("--quantos", type=int, default=10)
     parser.add_argument(
         "--ocr",
@@ -451,6 +548,12 @@ def main() -> int:
     args = parser.parse_args()
 
     indice = Path(args.indice)
+
+    if args.renormalizar:
+        if not indice.exists():
+            print(f"ERRO: indice nao existe: {indice}", file=sys.stderr)
+            return 2
+        return renormalizar(indice)
 
     if args.procurar:
         return procurar(indice, args.procurar, None, args.quantos)
