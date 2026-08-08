@@ -305,6 +305,7 @@ def main() -> int:
                 args.dpi,
                 Path(caminho_longo(temp)),
                 zip_path.name,
+                False,
             )
         except Exception as erro:  # noqa: BLE001
             print(f"  ERRO ao indexar: {type(erro).__name__}: {erro}")

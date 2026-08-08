@@ -143,7 +143,11 @@ def ocr_pdf(caminho: Path, lingua: str, dpi: int) -> tuple[str, int]:
 
 
 def extrair_texto(
-    caminho: Path, ocr: bool = False, lingua: str = "por", dpi: int = 200
+    caminho: Path,
+    ocr: bool = False,
+    lingua: str = "por",
+    dpi: int = 200,
+    verificar_nuvem: bool = True,
 ) -> tuple[str, str, int, int]:
     """Devolve (estado, texto, caracteres, paginas).
 
@@ -151,7 +155,7 @@ def extrair_texto(
     depois volta a ler o texto -- o custo extra e aceitavel e evita duas
     implementacoes da mesma logica a divergirem com o tempo.
     """
-    resultado = analisar(caminho)
+    resultado = analisar(caminho, verificar_nuvem)
 
     # Digitalizacoes: sem OCR ficam no indice como metadados, invisiveis a
     # qualquer pesquisa por conteudo. E a maior fatia de um acervo pericial.
@@ -238,6 +242,7 @@ def indexar(
     dpi: int = 200,
     raiz: Path | None = None,
     origem: str | None = None,
+    verificar_nuvem: bool = True,
 ) -> int:
     conexao = abrir_indice(indice)
 
@@ -287,11 +292,12 @@ def indexar(
         # esta corrida produziria.
         if anterior and anterior[1] == estatisticas.st_size:
             falta_ocr = ocr and anterior[2] == "ocr"
-            if not falta_ocr:
+            falso_nuvem = anterior[2] == "nuvem" and not verificar_nuvem
+            if not falta_ocr and not falso_nuvem:
                 inalterados += 1
                 continue
 
-        estado, texto, caracteres, paginas = extrair_texto(caminho, ocr, lingua, dpi)
+        estado, texto, caracteres, paginas = extrair_texto(caminho, ocr, lingua, dpi, verificar_nuvem)
         if estado == "ocr-lido":
             lidos_ocr += 1
         elif estado != "ok":

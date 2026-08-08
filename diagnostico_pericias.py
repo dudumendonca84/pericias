@@ -141,7 +141,7 @@ def extrair_texto_simples(caminho: Path) -> tuple[str, int, int, str]:
     return "ok", caracteres, 0, ""
 
 
-def analisar(caminho: Path) -> Resultado:
+def analisar(caminho: Path, verificar_nuvem: bool = True) -> Resultado:
     extensao = caminho.suffix.lower()
     try:
         tamanho = caminho.stat().st_size
@@ -160,7 +160,10 @@ def analisar(caminho: Path) -> Resultado:
         base.detalhe = f"extensao fora do ambito ({extensao or 'sem extensao'})"
         return base
 
-    if so_na_nuvem(caminho):
+    # Ficheiros acabados de extrair de um ZIP estao sempre materializados.
+    # Confiar no atributo do Windows nesse caso e um erro: ha maquinas onde
+    # ele vem marcado indevidamente e documentos bons ficavam por ler.
+    if verificar_nuvem and so_na_nuvem(caminho):
         base.estado = "nuvem"
         base.detalhe = "ainda nao sincronizado localmente"
         return base
