@@ -20,8 +20,21 @@ contorno de SSL que as redes com proxy corporativo exigem, e liga o acervo ao
 Claude Desktop. Numa instalação já existente actualiza só o programa — o
 acervo e a configuração ficam onde estão.
 
-Não descarrega nem envia documentos: o acervo é sempre local. Falta só copiar
-para lá o `acervo_pericias.sqlite`, ou construí-lo com `python configurar.py`.
+Para trazer também o acervo, define o link antes de correr:
+
+```powershell
+$env:ACERVO_URL = "https://.../acervo_pericias.sqlite"
+irm https://raw.githubusercontent.com/dudumendonca84/pericias/claude/diagnostico-laudos-periciais-9wrgvl/instalar.ps1 | iex
+```
+
+O link é teu e privado — uma partilha do Drive, um bucket, o que preferires.
+**O acervo nunca entra neste repositório:** tem nomes de partes, dados
+bancários e processos em segredo de justiça, e um repositório público torna
+isso permanente e indexável. O GitHub também rejeita ficheiros acima de
+100 MB, e um acervo real passa disso à vontade.
+
+Sem `ACERVO_URL`, o instalador diz onde copiar o ficheiro à mão, ou como
+construí-lo a partir das perícias da própria máquina com `python configurar.py`.
 
 ## Instalação manual
 

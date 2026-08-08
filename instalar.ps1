@@ -3,7 +3,15 @@
 #   irm https://raw.githubusercontent.com/dudumendonca84/pericias/claude/diagnostico-laudos-periciais-9wrgvl/instalar.ps1 | iex
 #
 # Descarrega o programa, instala o que falta, e liga-o ao Claude Desktop.
-# Nao descarrega nem envia documentos: o acervo e sempre local.
+#
+# Para trazer tambem o acervo, define a variavel antes de correr:
+#
+#   $env:ACERVO_URL = "https://.../acervo_pericias.sqlite"
+#   irm https://.../instalar.ps1 | iex
+#
+# Esse link e teu e privado. O acervo nunca vive neste repositorio: tem dados
+# de partes identificadas e processos em segredo de justica, e um repositorio
+# publico torna isso permanente e indexavel.
 
 $ErrorActionPreference = "Stop"
 
@@ -111,6 +119,30 @@ Pop-Location
 # ---------------------------------------------------------------- acervo
 Passo 5 "Acervo"
 $acervo = Join-Path $destino "acervo_pericias.sqlite"
+
+if ($env:ACERVO_URL -and -not (Test-Path $acervo)) {
+    Write-Host "  a descarregar de $($env:ACERVO_URL)"
+    try {
+        Invoke-WebRequest -Uri $env:ACERVO_URL -OutFile $acervo -UseBasicParsing
+    } catch {
+        Write-Host "  FALHOU: $_" -ForegroundColor Red
+        Write-Host "  Confirma que o link e de descarga directa e esta acessivel."
+        Remove-Item $acervo -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Uma pagina de erro HTML guardada com o nome do acervo passaria por ficheiro
+# valido e so daria erro quando alguem tentasse procurar.
+if (Test-Path $acervo) {
+    $bytes = [System.IO.File]::ReadAllBytes($acervo)[0..14]
+    $assinatura = [System.Text.Encoding]::ASCII.GetString($bytes)
+    if (-not $assinatura.StartsWith("SQLite format 3")) {
+        Write-Host "  O ficheiro descarregado nao e um acervo valido." -ForegroundColor Red
+        Write-Host "  (o link devolveu outra coisa -- provavelmente uma pagina de aviso)"
+        Remove-Item $acervo -Force -ErrorAction SilentlyContinue
+    }
+}
+
 if (Test-Path $acervo) {
     $mb = [math]::Round((Get-Item $acervo).Length / 1MB, 0)
     Write-Host "  encontrado ($mb MB)" -ForegroundColor Green
