@@ -18,7 +18,7 @@ import tkinter as tk
 import unicodedata
 from pathlib import Path
 from tkinter import font as tkfont
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 
 def pasta_base() -> Path:
@@ -34,7 +34,71 @@ def pasta_base() -> Path:
     return Path(__file__).resolve().parent
 
 
-INDICE = pasta_base() / "acervo_pericias.sqlite"
+NOME_ACERVO = "acervo_pericias.sqlite"
+MEMORIA = pasta_base() / "acervo.txt"
+
+
+def acervo_valido(caminho: Path) -> bool:
+    if not caminho.is_file():
+        return False
+    try:
+        conexao = sqlite3.connect(f"file:{caminho}?mode=ro", uri=True)
+        conexao.execute("SELECT COUNT(*) FROM documentos").fetchone()
+        conexao.close()
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def procurar_acervo() -> Path | None:
+    """Encontra o ficheiro do acervo sem obrigar ninguem a saber onde esta.
+
+    Basta arrastar o executavel para o ambiente de trabalho e o acervo fica
+    para tras -- para quem o usa, isso parece uma avaria. Procurar nos sitios
+    obvios evita a chamada de telefone.
+    """
+    candidatos = [
+        pasta_base() / NOME_ACERVO,
+        Path.home() / "Desktop" / NOME_ACERVO,
+        Path.home() / "Ambiente de Trabalho" / NOME_ACERVO,
+        Path.home() / "Documents" / NOME_ACERVO,
+        Path.home() / "Documentos" / NOME_ACERVO,
+        Path.home() / "Documents" / "pericias" / NOME_ACERVO,
+    ]
+
+    # Um caminho escolhido a mao numa sessao anterior vale mais que qualquer
+    # palpite, por isso e o primeiro a ser tentado.
+    if MEMORIA.exists():
+        try:
+            guardado = Path(MEMORIA.read_text(encoding="utf-8").strip())
+            candidatos.insert(0, guardado)
+        except OSError:
+            pass
+
+    for candidato in candidatos:
+        if acervo_valido(candidato):
+            return candidato
+
+    # Ultimo recurso: a pasta do executavel e o ambiente de trabalho, um nivel
+    # abaixo. Cobre o caso de a pasta inteira ter sido copiada para dentro de
+    # outra pasta qualquer.
+    for raiz in (pasta_base(), Path.home() / "Desktop", Path.home() / "Downloads"):
+        if not raiz.is_dir():
+            continue
+        try:
+            for achado in raiz.glob(f"*/{NOME_ACERVO}"):
+                if acervo_valido(achado):
+                    return achado
+        except OSError:
+            continue
+    return None
+
+
+def lembrar_acervo(caminho: Path) -> None:
+    try:
+        MEMORIA.write_text(str(caminho), encoding="utf-8")
+    except OSError:
+        pass  # so-leitura (pen, CD): funciona na mesma, so nao guarda
 
 # Tamanhos generosos: quem usa isto tem quase 80 anos e le no ecra o dia todo.
 TAMANHO_BASE = 15
@@ -103,6 +167,7 @@ class Aplicacao(tk.Tk):
         self.resultados: list[tuple] = []
         self.mostrados = 0
         self.alargou = False
+        self.indice: Path | None = None
         self._construir()
         self._verificar_indice()
 
@@ -189,24 +254,39 @@ class Aplicacao(tk.Tk):
         self.texto.tag_configure("etiqueta", foreground=SUAVE)
 
     def _verificar_indice(self) -> None:
-        if INDICE.exists():
-            try:
-                conexao = sqlite3.connect(INDICE)
-                total = conexao.execute(
-                    "SELECT COUNT(*) FROM documentos"
-                ).fetchone()[0]
-                conexao.close()
-                self.estado.configure(text=f"{total} documentos no acervo.")
-                return
-            except sqlite3.Error:
-                pass
-        messagebox.showwarning(
-            "Acervo não encontrado",
-            "Não encontrei o ficheiro do acervo nesta pasta.\n\n"
-            "Peça a quem instalou para o colocar aqui:\n"
-            f"{INDICE}",
-        )
-        self.estado.configure(text="Acervo não encontrado.")
+        self.indice = procurar_acervo()
+
+        if self.indice is None:
+            escolhido = messagebox.askyesno(
+                "Onde está o acervo?",
+                "Não encontrei o ficheiro do acervo.\n\n"
+                f"É um ficheiro chamado {NOME_ACERVO}, que costuma vir na "
+                "mesma pasta deste programa.\n\n"
+                "Quer procurá-lo agora?",
+            )
+            if escolhido:
+                caminho = filedialog.askopenfilename(
+                    title="Escolha o ficheiro do acervo",
+                    filetypes=[("Acervo de perícias", "*.sqlite"), ("Todos", "*.*")],
+                )
+                if caminho and acervo_valido(Path(caminho)):
+                    self.indice = Path(caminho)
+                    lembrar_acervo(self.indice)
+                elif caminho:
+                    messagebox.showerror(
+                        "Ficheiro inválido",
+                        "Esse ficheiro não é um acervo de perícias.",
+                    )
+
+        if self.indice is None:
+            self.estado.configure(text="Acervo não encontrado.")
+            self.entrada.configure(state="disabled")
+            return
+
+        conexao = sqlite3.connect(self.indice)
+        total = conexao.execute("SELECT COUNT(*) FROM documentos").fetchone()[0]
+        conexao.close()
+        self.estado.configure(text=f"{total} documentos no acervo.")
 
     def procurar(self) -> None:
         pergunta = self.entrada.get().strip()
@@ -226,7 +306,7 @@ class Aplicacao(tk.Tk):
         linhas: list[tuple] = []
         alargou = False
         try:
-            conexao = sqlite3.connect(INDICE)
+            conexao = sqlite3.connect(self.indice)
             for i, consulta in enumerate(tentativas):
                 linhas = list(
                     conexao.execute(

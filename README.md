@@ -145,6 +145,37 @@ separada, para não se misturar com o acervo do perito:
 python indexar_pericias.py --pasta "C:/pericias/referencias" --colecao publico
 ```
 
+## Usar no Claude Desktop (servidor MCP)
+
+O acervo vive na máquina e o Claude Desktop consulta-o através de um servidor
+MCP local. Nenhum documento é carregado para lado nenhum: o servidor corre
+aqui e devolve só o que lhe é perguntado.
+
+```
+Ligar ao Claude.bat
+```
+
+Ou `python instalar_mcp.py`. Escreve a entrada no
+`claude_desktop_config.json` preservando os outros servidores que lá
+estejam, e instala o pacote `mcp` se faltar. Depois é fechar e reabrir o
+Claude Desktop.
+
+Ferramentas que passam a estar disponíveis:
+
+| | |
+|---|---|
+| `resumo_acervo` | quantas peças, de que tipos, de que varas |
+| `procurar` | pesquisa por assunto em texto integral |
+| `pecas_do_processo` | tudo o que existe de um processo |
+| `pecas_da_vara` | tudo o que existe de uma vara |
+| `ler_peca` | texto integral de uma peça |
+| `modelos` | as peças mais completas de um tipo, como referência |
+
+O servidor abre o acervo em **só-leitura**: nunca o altera, e pode ser
+consultado enquanto uma indexação decorre.
+
+Para desligar: `python instalar_mcp.py --remover`.
+
 ## Entregar a um perito sem lhe instalar nada
 
 Na máquina de quem desenvolve, com o índice já construído:
