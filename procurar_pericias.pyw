@@ -13,13 +13,28 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import sys
 import tkinter as tk
 import unicodedata
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 
-INDICE = Path(__file__).resolve().parent / "acervo_pericias.sqlite"
+
+def pasta_base() -> Path:
+    """Pasta onde procurar o acervo, com ou sem empacotamento.
+
+    Congelado num executavel, __file__ aponta para a pasta temporaria onde o
+    PyInstaller descomprime o programa -- que e apagada a seguir e nunca tem o
+    acervo. O que interessa e a pasta onde o .exe esta pousado, ao lado do
+    ficheiro do acervo.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+INDICE = pasta_base() / "acervo_pericias.sqlite"
 
 # Tamanhos generosos: quem usa isto tem quase 80 anos e le no ecra o dia todo.
 TAMANHO_BASE = 15

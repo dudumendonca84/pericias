@@ -145,6 +145,28 @@ separada, para não se misturar com o acervo do perito:
 python indexar_pericias.py --pasta "C:/pericias/referencias" --colecao publico
 ```
 
+## Entregar a um perito sem lhe instalar nada
+
+Na máquina de quem desenvolve, com o índice já construído:
+
+```
+Construir EXE.bat
+```
+
+Produz a pasta `entrega` com dois ficheiros:
+
+```
+Procurar Pericias.exe
+acervo_pericias.sqlite
+```
+
+Copia-se a pasta para a máquina do perito — pen, email, o que for — e ele
+faz duplo clique no `.exe`. Não precisa de Python, nem de Tesseract, nem de
+ligação à internet. O acervo inteiro vai dentro do `.sqlite`.
+
+Para lhe dar perícias novas, volta-se a correr `Atualizar Acervo.bat` aqui e
+entrega-se o `.sqlite` actualizado. O `.exe` não muda.
+
 ## Sobre "aprender"
 
 A skill não aprende sozinha e não tem memória entre sessões. O que melhora
