@@ -180,8 +180,28 @@ def criar_atalho() -> None:
         print(f"  nao foi possivel criar: {erro}")
 
 
+def agendar_atualizacao() -> None:
+    """Oferece correr a actualizacao sozinha.
+
+    Sem isto, alguem tem de se lembrar de correr o atualizar.py depois de cada
+    peca entregue. Quem nao se lembra fica com um acervo a envelhecer em
+    silencio -- devolve menos do que devia e nao da sinal nenhum.
+    """
+    titulo("5. Actualizacao automatica")
+    if sys.platform != "win32":
+        print("  (so disponivel no Windows; noutros sistemas usa o cron)")
+        return
+
+    print("  As pericias novas podem ser indexadas sozinhas, de madrugada.")
+    if not sim_nao("Agendar?"):
+        print("  Podes agendar depois com:  python agendar.py")
+        return
+
+    subprocess.run([sys.executable, str(RAIZ / "agendar.py")], cwd=RAIZ)
+
+
 def indexar_agora(config: dict, com_ocr: bool) -> None:
-    titulo("5. Construir o acervo")
+    titulo("6. Construir o acervo")
     alvo = config.get("pasta_acervo") or config.get("pasta_zips")
     if not alvo:
         return
@@ -227,11 +247,13 @@ def main() -> int:
     print(f"\n  Configuracao guardada em {CONFIG.name}")
 
     criar_atalho()
+    agendar_atualizacao()
     indexar_agora(config, config["ocr"])
 
     titulo("Pronto")
     print("  Procurar        : abre o atalho 'Procurar Pericias'")
-    print("  Pericias novas  : python atualizar.py")
+    print("  Pericias novas  : sozinho, ou python atualizar.py")
+    print("  Ver agendamento : python agendar.py --estado")
     print("  Reconfigurar    : python configurar.py")
     return 0
 
