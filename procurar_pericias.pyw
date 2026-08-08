@@ -25,6 +25,10 @@ INDICE = Path(__file__).resolve().parent / "acervo_pericias.sqlite"
 TAMANHO_BASE = 15
 TAMANHO_TITULO = 20
 
+# Quantos documentos mostrar de cada vez. Uma lista com centenas de linhas nao
+# se percorre; o botao "Mostrar mais" traz o lote seguinte quando faz falta.
+POR_PAGINA = 50
+
 FUNDO = "#ffffff"
 TEXTO = "#1a1a1a"
 DESTAQUE = "#0b4f9e"
@@ -82,6 +86,8 @@ class Aplicacao(tk.Tk):
         self.fonte_lista = tkfont.Font(family="Segoe UI", size=TAMANHO_BASE)
 
         self.resultados: list[tuple] = []
+        self.mostrados = 0
+        self.alargou = False
         self._construir()
         self._verificar_indice()
 
@@ -122,6 +128,12 @@ class Aplicacao(tk.Tk):
             activeforeground="white", relief="flat", cursor="hand2",
             padx=28, command=self.procurar,
         ).pack(side="left", padx=(12, 0))
+
+        self.botao_mais = tk.Button(
+            linha, text="Mostrar mais", font=self.fonte,
+            bg="#e8e8e8", fg=TEXTO, relief="flat", cursor="hand2",
+            padx=18, command=self._mostrar_lote,
+        )
 
         self.estado = tk.Label(
             topo, text="", font=self.fonte, bg=FUNDO, fg=SUAVE, anchor="w"
@@ -206,7 +218,7 @@ class Aplicacao(tk.Tk):
                         """SELECT d.nome, d.processo, d.vara, d.tipo, d.origem,
                                   t.texto
                            FROM textos t JOIN documentos d ON d.id = t.rowid
-                           WHERE t.textos MATCH ? ORDER BY rank LIMIT 120""",
+                           WHERE t.textos MATCH ? ORDER BY rank LIMIT 2000""",
                         (consulta,),
                     )
                 )
@@ -229,31 +241,49 @@ class Aplicacao(tk.Tk):
                 continue
             vistos.add(chave)
             self.resultados.append(linha)
-            if len(self.resultados) >= 25:
-                break
 
         if not self.resultados:
             self.estado.configure(text="Não encontrei nada com essas palavras.")
+            self.botao_mais.pack_forget()
             return
 
-        for nome, processo, _, tipo, _, _ in self.resultados:
+        self.alargou = alargou
+        self.mostrados = 0
+        self._mostrar_lote()
+        self.lista.selection_set(0)
+        self.mostrar()
+
+    def _mostrar_lote(self) -> None:
+        """Acrescenta o lote seguinte de resultados à lista."""
+        fatia = self.resultados[self.mostrados : self.mostrados + POR_PAGINA]
+        for nome, processo, _, _, _, _ in fatia:
             rotulo = Path(nome).stem
             if processo:
                 rotulo = f"{rotulo}   —   {processo}"
             self.lista.insert("end", f"  {rotulo}")
+        self.mostrados += len(fatia)
 
-        n = len(self.resultados)
+        total = len(self.resultados)
+        faltam = total - self.mostrados
         aviso = (
             "  (não havia nada com todas as palavras, mostro o mais parecido)"
-            if alargou
+            if self.alargou
             else ""
         )
-        self.estado.configure(
-            text=f"{n} documento{'s' if n > 1 else ''}. "
-            f"Clique num para o ler.{aviso}"
-        )
-        self.lista.selection_set(0)
-        self.mostrar()
+        if faltam:
+            self.estado.configure(
+                text=f"A mostrar {self.mostrados} de {total} documentos.{aviso}"
+            )
+            self.botao_mais.configure(
+                text=f"Mostrar mais {min(POR_PAGINA, faltam)}"
+            )
+            self.botao_mais.pack(side="left", padx=(12, 0))
+        else:
+            plural = "s" if total > 1 else ""
+            self.estado.configure(
+                text=f"{total} documento{plural}. Clique num para o ler.{aviso}"
+            )
+            self.botao_mais.pack_forget()
 
     def mostrar(self) -> None:
         seleccao = self.lista.curselection()
