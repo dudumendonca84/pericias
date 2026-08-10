@@ -22,20 +22,31 @@ CONFIG = RAIZ / "config.json"
 INDICE = RAIZ / "acervo_pericias.sqlite"
 
 PADRAO = {
-    "pasta_acervo": "",
-    "pasta_zips": "",
+    # Lista, nao um caminho: um perito costuma ter o acervo repartido por
+    # varias pastas -- laudos numa, peticoes noutra -- e indexar so uma
+    # deixava metade do trabalho dele invisivel.
+    "pastas": [],
     "ocr": True,
     "lingua": "por",
 }
 
 
 def ler_config() -> dict:
+    config = dict(PADRAO)
     if CONFIG.exists():
         try:
-            return {**PADRAO, **json.loads(CONFIG.read_text(encoding="utf-8"))}
+            config.update(json.loads(CONFIG.read_text(encoding="utf-8")))
         except (json.JSONDecodeError, OSError):
             pass
-    return dict(PADRAO)
+
+    # Configuracoes escritas pela versao de pasta unica continuam a abrir.
+    for antigo in ("pasta_acervo", "pasta_zips"):
+        caminho = config.pop(antigo, "")
+        if caminho and caminho not in [p["caminho"] for p in config["pastas"]]:
+            config["pastas"].append(
+                {"caminho": caminho, "zips": antigo == "pasta_zips"}
+            )
+    return config
 
 
 def gravar_config(config: dict) -> None:
@@ -123,21 +134,11 @@ def verificar_ocr() -> bool:
     return False
 
 
-def escolher_pasta(config: dict) -> bool:
-    titulo("3. Onde esta o acervo")
-    print("  A pasta com os PDFs e documentos das pericias.")
-    print("  Se o acervo ainda esta em ficheiros ZIP, indica a pasta dos ZIP.")
-    print()
-
-    caminho = perguntar("Pasta", config.get("pasta_acervo", ""))
-    if not caminho:
-        print("  Sem pasta nao ha nada a indexar.")
-        return False
-
+def examinar(caminho: str) -> dict | None:
     pasta = Path(caminho).expanduser()
     if not pasta.is_dir():
         print(f"  Nao existe: {pasta}")
-        return False
+        return None
 
     zips = list(pasta.glob("*.zip"))
     documentos = [
@@ -146,14 +147,51 @@ def escolher_pasta(config: dict) -> bool:
     ]
     print(f"  {len(documentos)} documentos, {len(zips)} ficheiros ZIP")
 
-    if zips and not documentos:
-        config["pasta_zips"] = str(pasta)
-        config["pasta_acervo"] = ""
-        print("  Modo: acervo em ZIP (extraidos um de cada vez, sem encher o disco)")
-    else:
-        config["pasta_acervo"] = str(pasta)
-        config["pasta_zips"] = ""
-        print("  Modo: pasta de documentos")
+    if not documentos and not zips:
+        print("  Nada para indexar aqui -- confirma o caminho.")
+        return None
+
+    so_zips = bool(zips) and not documentos
+    print(
+        "  Modo: acervo em ZIP (extraidos um de cada vez, sem encher o disco)"
+        if so_zips
+        else "  Modo: pasta de documentos"
+    )
+    return {"caminho": str(pasta), "zips": so_zips}
+
+
+def escolher_pastas(config: dict) -> bool:
+    titulo("3. Onde estao as pericias")
+    print("  As pastas com os documentos. Podem ser varias -- laudos numa,")
+    print("  peticoes noutra. Se o acervo estiver em ZIP, indica a pasta dos ZIP.")
+    print("  Enter numa linha vazia termina.")
+
+    if config["pastas"]:
+        print()
+        print("  Ja configuradas:")
+        for p in config["pastas"]:
+            print(f"    {p['caminho']}")
+        print()
+        if not sim_nao("Manter estas e acrescentar mais?", True):
+            config["pastas"] = []
+
+    conhecidas = {p["caminho"] for p in config["pastas"]}
+    while True:
+        print()
+        caminho = perguntar(f"Pasta {len(config['pastas']) + 1} (Enter para terminar)")
+        if not caminho:
+            break
+        registo = examinar(caminho)
+        if registo and registo["caminho"] not in conhecidas:
+            config["pastas"].append(registo)
+            conhecidas.add(registo["caminho"])
+
+    if not config["pastas"]:
+        print("  Sem pastas nao ha nada a indexar.")
+        return False
+
+    print()
+    print(f"  {len(config['pastas'])} pasta(s) a indexar.")
     return True
 
 
@@ -200,10 +238,18 @@ def agendar_atualizacao() -> None:
     subprocess.run([sys.executable, str(RAIZ / "agendar.py")], cwd=RAIZ)
 
 
-def indexar_agora(config: dict, com_ocr: bool) -> None:
+def comando_para(pasta: dict, config: dict) -> list[str]:
+    guiao = "processar_zips.py" if pasta["zips"] else "indexar_pericias.py"
+    bandeira = "--zips" if pasta["zips"] else "--pasta"
+    comando = [sys.executable, str(RAIZ / guiao), bandeira, pasta["caminho"]]
+    if config.get("ocr"):
+        comando += ["--ocr", "--lingua", config.get("lingua", "por")]
+    return comando
+
+
+def indexar_agora(config: dict) -> None:
     titulo("6. Construir o acervo")
-    alvo = config.get("pasta_acervo") or config.get("pasta_zips")
-    if not alvo:
+    if not config["pastas"]:
         return
 
     if INDICE.exists():
@@ -217,14 +263,10 @@ def indexar_agora(config: dict, com_ocr: bool) -> None:
         print("  Podes correr depois com:  python atualizar.py")
         return
 
-    guiao = "processar_zips.py" if config.get("pasta_zips") else "indexar_pericias.py"
-    bandeira = "--zips" if config.get("pasta_zips") else "--pasta"
-    comando = [sys.executable, str(RAIZ / guiao), bandeira, alvo]
-    if com_ocr and config.get("ocr"):
-        comando += ["--ocr", "--lingua", config.get("lingua", "por")]
-
-    print()
-    subprocess.run(comando, cwd=RAIZ)
+    for i, pasta in enumerate(config["pastas"], 1):
+        print()
+        print(f"--- pasta {i}/{len(config['pastas'])}: {pasta['caminho']}")
+        subprocess.run(comando_para(pasta, config), cwd=RAIZ)
 
 
 def main() -> int:
@@ -240,7 +282,7 @@ def main() -> int:
     tem_ocr = verificar_ocr()
     config["ocr"] = tem_ocr and sim_nao("Usar OCR nas digitalizacoes?", tem_ocr)
 
-    if not escolher_pasta(config):
+    if not escolher_pastas(config):
         return 1
 
     gravar_config(config)
@@ -248,7 +290,7 @@ def main() -> int:
 
     criar_atalho()
     agendar_atualizacao()
-    indexar_agora(config, config["ocr"])
+    indexar_agora(config)
 
     titulo("Pronto")
     print("  Procurar        : abre o atalho 'Procurar Pericias'")
