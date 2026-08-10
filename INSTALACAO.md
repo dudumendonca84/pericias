@@ -1,22 +1,74 @@
 # Instalar na máquina do perito
 
-Guia de campo. Segue por ordem; cada passo tem o que verificar antes de
-avançar.
+Guia de campo. Tudo o que é preciso, por ordem, com o que verificar antes de
+avançar e o que fazer quando falha.
+
+---
 
 ## Antes de sair
 
-- [ ] Saber **onde estão as perícias** na máquina dele (o caminho da pasta).
-      É a única coisa que não se descobre lá no momento.
-- [ ] Confirmar que ele tem **Claude Desktop** instalado e com sessão iniciada.
-      Sem isso, a parte de redigir não funciona — a pesquisa funciona na mesma.
-- [ ] Contar com **algumas horas** de indexação. O OCR é lento; a máquina fica
-      a trabalhar de noite.
+| | |
+|---|---|
+| **Onde estão as perícias?** | Pergunta-lhe antes. É a única coisa que não se descobre lá. |
+| **Ele tem Claude Desktop?** | A app instalada, não o site. Menu Iniciar → escrever `Claude`. |
+| **O Drive está no computador?** | Se ele só vê as perícias no site do Google, vais precisar de instalar o Drive para Computador — e isso demora. |
+| **Tempo** | A indexação com OCR leva horas. A máquina fica a trabalhar de noite. |
+| **Espaço em disco** | O índice ocupa cerca de 10% do tamanho do acervo. Confirmar que há folga. |
 
-## Na máquina dele
+---
 
-### 1. Instalar
+## PASSO 0 — Encontrar as perícias
 
-PowerShell **normal** (não como administrador):
+Abre o PowerShell (menu Iniciar → `powershell`). **Normal, não como
+administrador** — se o título disser "Administrador", fecha e abre outra vez.
+
+Vê que unidades existem:
+
+```powershell
+Get-PSDrive -PSProvider FileSystem | Select-Object Name, Root
+```
+
+### Caso A — as perícias estão numa pasta do computador
+
+Pede-lhe para abrir a pasta. Clica na barra de endereço lá em cima, `Ctrl+C`.
+É esse o caminho. Segue para o passo 1.
+
+### Caso B — estão no Google Drive, com a app instalada
+
+Aparece uma unidade `G:` (ou outra letra). Duas coisas a confirmar:
+
+```powershell
+Get-ChildItem "G:\" -Directory
+```
+
+E, no explorador: botão direito na pasta das perícias → **Acesso offline** →
+**Disponível offline**.
+
+> Sem isto, o Drive mostra os ficheiros mas não os tem no disco — só os
+> descarrega quando alguém os abre. O indexador marca-os como `nuvem` e
+> salta-os. Esperar a sincronização acabar (ícone verde) antes de avançar.
+
+### Caso C — o Drive só existe no site
+
+```powershell
+winget install Google.GoogleDrive
+```
+
+Depois abrir o Google Drive pelo menu Iniciar, iniciar sessão com a conta
+dele, e voltar ao caso B. **Isto demora** — sincronizar milhares de ficheiros
+não é coisa de minutos.
+
+Alternativa mais rápida se ele tiver pressa: descarregar a pasta do site
+(botão direito → Transferir), que sai em ZIP. O programa aceita a pasta dos
+ZIP directamente e extrai um de cada vez, sem encher o disco.
+
+### Caso D — as perícias estão em ficheiros ZIP
+
+Indicar a pasta dos ZIP no passo 2. O programa reconhece e trata do resto.
+
+---
+
+## PASSO 1 — Instalar
 
 ```powershell
 irm https://raw.githubusercontent.com/dudumendonca84/pericias/claude/diagnostico-laudos-periciais-9wrgvl/instalar.ps1 | iex
@@ -25,50 +77,79 @@ irm https://raw.githubusercontent.com/dudumendonca84/pericias/claude/diagnostico
 Instala o Python, o programa, os pacotes, o Tesseract com o português, e liga
 ao Claude Desktop.
 
-> Se disser **"FECHA esta janela, abre outra"** — instalou o Python e o `PATH`
-> só actualiza em janelas novas. Fecha, abre outra, cola o mesmo comando.
+**Se disser "FECHA esta janela, abre outra":** instalou o Python e o Windows
+só o reconhece em janelas novas. Fechar, abrir outra, colar o mesmo comando.
+Acontece uma vez.
 
 Verificar antes de avançar:
 
 ```
-[1] Python            Python 3.12.x
-[4] OCR (Tesseract)   portugues instalado
-[5] Ligar ao Claude   Instalado em C:\Users\...\claude_desktop_config.json
+[1] Python              Python 3.12.x
+[4] OCR (Tesseract)     portugues instalado
+[5] Ligar ao Claude     Instalado em C:\Users\...
 ```
 
-Se o passo 4 disser `NAO INSTALADO`, as digitalizações ficam de fora — que
-num acervo pericial costumam ser a maioria. Vale a pena resolver antes de
-indexar, senão é preciso repetir tudo.
+> Se o `[4]` disser `NAO INSTALADO`, resolver **antes** de indexar. As
+> digitalizações ficariam de fora, e num acervo pericial costumam ser a
+> maioria — descobrir isso depois obriga a repetir horas de trabalho.
 
-### 2. Construir o acervo
+---
+
+## PASSO 2 — Construir o acervo
 
 ```powershell
 cd $HOME\Documents\pericias
 python configurar.py
 ```
 
-Responder:
-
 | Pergunta | Resposta |
 |---|---|
 | Instalar pacotes? | Enter |
 | Usar OCR? | Enter |
-| **Pasta** | o caminho das perícias dele |
+| **Pasta** | o caminho do passo 0 |
 | Criar atalho? | Enter |
 | Agendar actualização automática? | Enter |
 | Começar agora? | Enter |
 
-Deixar correr. Pode ser interrompido com `Ctrl+C` e retomado depois — não
-perde o que já fez.
+**Confirmar o número.** Logo a seguir à pasta, ele diz o que encontrou:
 
-### 3. Verificar
+```
+  3412 documentos, 0 ficheiros ZIP
+  Modo: pasta de documentos
+```
+
+Se disser `0 documentos`, a pasta está errada — voltar a correr
+`python configurar.py` e escrever outra.
+
+---
+
+## PASSO 3 — Esperar
+
+Aparecem marcas a indicar o que vai encontrando:
+
+| Marca | Significa |
+|---|---|
+| `.` | texto extraído, tudo bem |
+| `O` | digitalização — vai por OCR, é lento |
+| `?` | **só na nuvem** — sincronização por acabar |
+| `X` | erro de leitura |
+| `-` | ignorado (ficheiro temporário, imagem) |
+
+Muitos `?` significa parar e voltar ao passo 0, caso B.
+
+Pode ser interrompido com `Ctrl+C` e retomado — não perde o que já fez.
+
+---
+
+## PASSO 4 — Verificar
 
 ```powershell
 python consultar_acervo.py --resumo
 ```
 
-Deve mostrar o número de documentos, os tipos de peça e as varas. Se o número
-for muito abaixo do esperado, algo correu mal — ver o diagnóstico abaixo.
+Mostra quantos documentos, quantos com texto legível, os tipos de peça e as
+varas. Se o número de documentos fizer sentido e a maioria tiver texto
+legível, correu bem.
 
 ```powershell
 python agendar.py --estado
@@ -76,44 +157,81 @@ python agendar.py --estado
 
 Confirma que a actualização automática ficou registada.
 
-### 4. Ligar ao Claude Desktop
+---
 
-Fechar e **reabrir** o Claude Desktop. Nas definições, em Connectors, deve
-aparecer **pericias**.
+## PASSO 5 — Ligar ao Claude Desktop
 
-Perguntar lá, para testar:
+Fechar o Claude Desktop **por completo** — não minimizar. Verificar no ícone
+junto ao relógio: botão direito → Quit.
+
+Abrir outra vez. Nas definições, em Connectors, deve aparecer **pericias**.
+
+Testar:
 
 ```
 que laudos tenho sobre infiltração?
 ```
 
+Ele deve devolver peças reais do acervo, com nome e número de processo.
+
+---
+
 ## O que ensinar ao perito
 
 Duas coisas, e mais nada.
 
-**Para procurar uma peça:** duplo clique no ícone **Procurar Perícias** no
-ambiente de trabalho. Escrever, Enter, clicar num resultado para o ler.
+**Procurar uma peça antiga:** duplo clique no ícone **Procurar Perícias** no
+ambiente de trabalho. Escrever como se fala, Enter, clicar num resultado para
+o ler.
 
-**Para trabalhar numa peça nova:** abrir o Claude Desktop e perguntar em
-português normal — *"como respondi antes a quesitos sobre trinca em
-alvenaria?"*, *"redige uma carta de levantamento de honorários para a 32ª
-Vara"*.
+**Trabalhar numa peça nova:** abrir o Claude Desktop e perguntar em português
+normal:
 
-As perícias novas entram sozinhas, de madrugada. Ele não corre comandos.
+- *como respondi antes a quesitos sobre trinca em alvenaria?*
+- *redige uma carta de levantamento de honorários para a 32ª Vara*
+- *mostra-me tudo o que entreguei no processo 0012140-26.2013.8.19.0028*
+
+As perícias novas entram sozinhas, de madrugada. Ele nunca corre comandos.
+
+**O que ele deve saber:** o Claude não se lembra de conversas anteriores. Se o
+corrigir hoje, amanhã tem de dizer outra vez. O que fica é o que está escrito
+nas peças dele.
+
+---
 
 ## Quando algo falha
 
-| Sintoma | Causa |
+| Sintoma | Causa e solução |
 |---|---|
-| `python` não reconhecido | Instalou agora; fechar e reabrir a janela |
-| Abre a Microsoft Store | Python não instalado; ver o passo 1 |
-| `NAO INSTALADO` no Tesseract | Instalar de github.com/UB-Mannheim/tesseract/wiki |
-| Muitos `?` na indexação | Ficheiros só na nuvem; sincronizar offline primeiro |
-| Muitos `O` na indexação | Digitalizações sem OCR; confirmar o Tesseract |
-| `pericias` não aparece no Claude | Não reabriu o Claude Desktop |
-| A pesquisa não encontra nada | `python consultar_acervo.py --resumo` diz o que há |
+| `python` não é reconhecido | Instalou agora — fechar e reabrir a janela |
+| Abre a Microsoft Store | Python não instalado; repetir o passo 1 |
+| `[4] NAO INSTALADO` | Instalar de github.com/UB-Mannheim/tesseract/wiki, e o `por.traineddata` para a pasta `tessdata` |
+| `0 documentos` no passo 2 | Pasta errada; voltar ao passo 0 |
+| Muitos `?` na indexação | Ficheiros só na nuvem; marcar a pasta disponível offline |
+| Muitos `O` e OCR a 0 | Tesseract não encontrado; ver passo 1 |
+| `database is locked` | Duas indexações ao mesmo tempo; fechar as outras janelas |
+| `no space left` | Disco cheio; apagar ZIPs já processados |
+| `pericias` não aparece no Claude | Não fechou o Claude Desktop por completo |
+| O Claude não usa o acervo | Dizer-lhe *"procura no meu acervo"* |
+| A pesquisa não encontra nada | `python consultar_acervo.py --resumo` diz o que existe |
+| Peça arquivada na vara errada | `python indexar_pericias.py --renormalizar` |
 
-## Actualizar o programa mais tarde
+---
 
-O mesmo comando do passo 1. Substitui só o programa — o acervo, a
-configuração e o agendamento ficam onde estão.
+## Comandos de referência
+
+```powershell
+cd $HOME\Documents\pericias
+
+python consultar_acervo.py --resumo          # o que existe no acervo
+python atualizar.py                          # apanhar perícias novas agora
+python agendar.py --estado                   # ver a actualização automática
+python agendar.py --diario                   # passar a diária
+python agendar.py --remover                  # desligar
+python indexar_pericias.py --renormalizar    # recorrigir varas e tipos
+python configurar.py                         # mudar a pasta do acervo
+python instalar_mcp.py --remover             # desligar do Claude Desktop
+```
+
+Actualizar o programa mais tarde: o mesmo comando do passo 1. Substitui só o
+programa — o acervo, a configuração e o agendamento ficam onde estão.
