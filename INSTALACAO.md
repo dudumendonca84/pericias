@@ -235,3 +235,73 @@ python instalar_mcp.py --remover             # desligar do Claude Desktop
 
 Actualizar o programa mais tarde: o mesmo comando do passo 1. Substitui só o
 programa — o acervo, a configuração e o agendamento ficam onde estão.
+
+---
+
+# Anexo — a instalação concreta
+
+Acervo repartido por duas pastas do Google Drive pessoal:
+
+| Pasta | Conteúdo |
+|---|---|
+| `eletranabc2` | laudos e esclarecimentos sobre o laudo |
+| `perícias judiciais` | petições de honorários, de esclarecimentos de honorários, de levantamento, e outras |
+
+Com o Google Drive para Computador montado, os caminhos ficam:
+
+```
+G:\My Drive\eletranabc2
+G:\My Drive\perícias judiciais
+```
+
+> A letra pode não ser `G:` e a pasta pode chamar-se `Meu Drive` se a conta
+> estiver em português. Confirmar com `Get-PSDrive` e `Get-ChildItem` antes de
+> escrever os caminhos — o acento em `perícias` também conta.
+
+## Sequência completa
+
+```powershell
+# 1. Ver se o Drive está montado
+Get-PSDrive -PSProvider FileSystem | Select-Object Name, Root
+
+# 2. Se só houver C:, instalar o Google Drive para Computador
+winget install Google.GoogleDrive
+#    Abrir o Google Drive pelo menu Iniciar e iniciar sessão com a conta dele.
+#    Depois, no explorador: botão direito em cada uma das duas pastas
+#    -> Acesso offline -> Disponível offline. ESPERAR sincronizar.
+
+# 3. Confirmar os nomes exactos
+Get-ChildItem "G:\" -Directory
+Get-ChildItem "G:\My Drive" -Directory
+
+# 4. Instalar o programa
+irm https://raw.githubusercontent.com/dudumendonca84/pericias/claude/diagnostico-laudos-periciais-9wrgvl/instalar.ps1 | iex
+
+# 5. Configurar e indexar
+cd $HOME\Documents\pericias
+python configurar.py
+#    Enter em tudo, excepto nas pastas:
+#      Pasta 1: G:\My Drive\eletranabc2
+#      Pasta 2: G:\My Drive\perícias judiciais
+#      Pasta 3: Enter (termina)
+
+# 6. No dia seguinte, verificar
+python consultar_acervo.py --resumo
+python agendar.py --estado
+```
+
+Depois fechar e reabrir o Claude Desktop, e perguntar lá:
+*que laudos tenho sobre infiltração?*
+
+## O que pode demorar mais do que se espera
+
+**A sincronização offline do Drive.** Milhares de ficheiros descarregados do
+zero levam horas e ocupam o mesmo espaço que ocupam na nuvem. É o passo que
+convém começar primeiro e deixar a correr enquanto se faz o resto.
+
+**A indexação com OCR.** Também horas. Pode ser interrompida com `Ctrl+C` e
+retomada — não perde o que já fez.
+
+Se a sincronização não tiver acabado quando a indexação começar, aparecem
+muitos `?` no ecrã. Nesse caso: `Ctrl+C`, esperar, e correr
+`python atualizar.py` mais tarde.
