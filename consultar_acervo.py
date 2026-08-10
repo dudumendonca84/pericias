@@ -204,4 +204,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except BrokenPipeError:
+        # Encaminhar a saida para outro comando que a corta -- head, more,
+        # Select-Object -First -- fechava isto com uma stacktrace.
+        sys.stdout = None
+        raise SystemExit(0) from None

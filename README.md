@@ -53,13 +53,25 @@ python configurar.py
 
 A configuração verifica as dependências e instala-as (com o contorno de SSL
 que as redes com proxy corporativo exigem), deteta o Tesseract para o OCR,
-pergunta onde está o acervo, cria o atalho de pesquisa no ambiente de
-trabalho, e constrói o índice. A pasta fica guardada em `config.json`, e a
-partir daí os comandos deixam de precisar de argumentos.
+**procura as pastas do acervo sozinha** e propõe as que encontrar, cria o
+atalho de pesquisa no ambiente de trabalho, agenda a actualização automática,
+e constrói o índice.
 
-**Perícias novas:** duplo clique em `Atualizar Acervo.bat`, ou
-`python atualizar.py`. Só processa o que mudou, e volta a aplicar as regras
-de classificação ao que já estava indexado.
+Aceita várias pastas — o acervo de um perito costuma estar repartido, laudos
+numa e petições noutra. Ficam guardadas em `config.json` e a partir daí os
+comandos deixam de precisar de argumentos. Para as indicar sem diálogo:
+
+```bash
+python configurar.py --pastas "G:/My Drive/eletranabc2" "G:/My Drive/pericias judiciais"
+```
+
+**Perícias novas:** entram sozinhas, aos domingos de madrugada, pela tarefa
+que o `agendar.py` regista. Para forçar agora, duplo clique em
+`Atualizar Acervo.bat` ou `python atualizar.py`: percorre todas as pastas, só
+processa o que mudou, e volta a aplicar as regras de classificação ao que já
+estava indexado.
+
+**Instalar noutra máquina:** ver [INSTALACAO.md](INSTALACAO.md).
 
 **Procurar sem terminal:** o atalho `Procurar Pericias` abre uma janela onde
 se escreve a pergunta em linguagem normal.
