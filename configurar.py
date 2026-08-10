@@ -11,8 +11,10 @@ mudar a pasta do acervo ou reinstalar dependencias.
 
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
+import string
 import subprocess
 import sys
 from pathlib import Path
@@ -134,6 +136,55 @@ def verificar_ocr() -> bool:
     return False
 
 
+# Nomes que valem a pena procurar sozinho antes de perguntar. O Drive chama-se
+# "My Drive" ou "Meu Drive" conforme a lingua da conta, e os nomes das pastas
+# levam acentos que ninguem acerta a escrever a primeira.
+NOMES_ACERVO = ("eletranabc2", "pericias judiciais", "pericia", "laudo")
+
+
+def sem_acentos_simples(texto: str) -> str:
+    import unicodedata
+
+    return "".join(
+        c
+        for c in unicodedata.normalize("NFKD", texto)
+        if not unicodedata.combining(c)
+    ).lower()
+
+
+def procurar_pastas() -> list[Path]:
+    """Procura pastas de pericias nas unidades e nas raizes habituais.
+
+    Poupa escrever caminhos a mao, que e onde se erra: a letra da unidade
+    muda, "My Drive" pode ser "Meu Drive", e os acentos raramente sobrevivem
+    a ser escritos de cabeca.
+    """
+    raizes: list[Path] = []
+    for letra in string.ascii_uppercase:
+        unidade = Path(f"{letra}:\\")
+        if not unidade.is_dir():
+            continue
+        raizes.append(unidade)
+        for nome in ("My Drive", "Meu Drive", "Meu disco"):
+            if (unidade / nome).is_dir():
+                raizes.append(unidade / nome)
+    raizes += [Path.home(), Path.home() / "Documents", Path.home() / "Documentos"]
+
+    encontradas: list[Path] = []
+    for raiz in raizes:
+        try:
+            for candidata in raiz.iterdir():
+                if not candidata.is_dir():
+                    continue
+                nome = sem_acentos_simples(candidata.name)
+                if any(alvo in nome for alvo in NOMES_ACERVO):
+                    if candidata not in encontradas:
+                        encontradas.append(candidata)
+        except (OSError, PermissionError):
+            continue
+    return encontradas
+
+
 def examinar(caminho: str) -> dict | None:
     pasta = Path(caminho).expanduser()
     if not pasta.is_dir():
@@ -162,6 +213,24 @@ def examinar(caminho: str) -> dict | None:
 
 def escolher_pastas(config: dict) -> bool:
     titulo("3. Onde estao as pericias")
+
+    if not config["pastas"]:
+        sugestoes = procurar_pastas()
+        if sugestoes:
+            print("  Encontrei estas pastas:")
+            for i, s in enumerate(sugestoes, 1):
+                print(f"    {i}. {s}")
+            print()
+            if sim_nao("Usar estas?"):
+                for candidata in sugestoes:
+                    registo = examinar(str(candidata))
+                    if registo:
+                        config["pastas"].append(registo)
+                if config["pastas"]:
+                    print()
+                    print(f"  {len(config['pastas'])} pasta(s) a indexar.")
+                    return True
+
     print("  As pastas com os documentos. Podem ser varias -- laudos numa,")
     print("  peticoes noutra. Se o acervo estiver em ZIP, indica a pasta dos ZIP.")
     print("  Enter numa linha vazia termina.")
@@ -270,6 +339,30 @@ def indexar_agora(config: dict) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Configura o acervo de pericias."
+    )
+    parser.add_argument(
+        "--pastas", nargs="+", metavar="PASTA",
+        help="caminhos do acervo, sem perguntar",
+    )
+    args = parser.parse_args()
+
+    if args.pastas:
+        config = ler_config()
+        config["pastas"] = []
+        for caminho in args.pastas:
+            print(f"{caminho}")
+            registo = examinar(caminho)
+            if registo:
+                config["pastas"].append(registo)
+        if not config["pastas"]:
+            print("Nenhuma pasta valida.")
+            return 1
+        gravar_config(config)
+        print(f"\nGuardado em {CONFIG.name}. Para indexar:  python atualizar.py")
+        return 0
+
     print("=" * 60)
     print("  ACERVO DE PERICIAS -- configuracao")
     print("=" * 60)
