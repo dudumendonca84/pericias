@@ -1,0 +1,33 @@
+{
+  "dxt_version": "0.1",
+  "name": "pericias",
+  "display_name": "Acervo de Perícias",
+  "version": "1.0.0",
+  "description": "Consulta o acervo local de perícias judiciais: procurar peças por assunto, ler o texto integral, ver tudo o que existe de um processo ou de uma vara, e trazer peças de referência ao redigir.",
+  "long_description": "Servidor MCP local sobre o índice de perícias construído na própria máquina. Nenhum documento é enviado para lado nenhum: o servidor corre localmente e devolve apenas o que lhe é perguntado. O acervo é aberto em só-leitura.",
+  "author": {
+    "name": "Acervo de Perícias"
+  },
+  "server": {
+    "type": "python",
+    "entry_point": "mcp_pericias.py",
+    "mcp_config": {
+      "command": "python",
+      "args": ["${__dirname}/mcp_pericias.py"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUTF8": "1"
+      }
+    }
+  },
+  "tools": [
+    { "name": "resumo_acervo", "description": "Panorama do acervo: quantas peças, de que tipos, de que varas." },
+    { "name": "procurar", "description": "Procura peças por assunto, em texto integral." },
+    { "name": "pecas_do_processo", "description": "Lista todas as peças de um processo." },
+    { "name": "pecas_da_vara", "description": "Lista as peças de uma vara." },
+    { "name": "ler_peca", "description": "Devolve o texto integral de uma peça." },
+    { "name": "modelos", "description": "Peças mais completas de um tipo, como referência estrutural." }
+  ],
+  "keywords": ["pericias", "laudos", "juridico", "engenharia"],
+  "license": "MIT"
+}
