@@ -144,6 +144,9 @@ def localizar_tessdata() -> str | None:
         r"C:\Program Files\Tesseract-OCR\tessdata",
         r"C:\Program Files (x86)\Tesseract-OCR\tessdata",
         os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tessdata"),
+        # Copia do utilizador, usada quando o Tesseract fica em Program Files
+        # e escrever la exigiria administrador.
+        os.path.expandvars(r"%LOCALAPPDATA%\pericias-tessdata"),
         "/usr/share/tesseract-ocr/5/tessdata",
         "/usr/share/tesseract-ocr/4.00/tessdata",
         "/usr/share/tessdata",

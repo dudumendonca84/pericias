@@ -136,20 +136,46 @@ if (-not $tessdata) {
 if ($tessdata) {
     Write-Host "  $tessdata" -ForegroundColor Green
     $portugues = Join-Path $tessdata "por.traineddata"
-    if (-not (Test-Path $portugues)) {
+
+    # Quando o Tesseract fica em Program Files, escrever la exige
+    # administrador. O Tesseract aceita qualquer pasta em TESSDATA_PREFIX, e
+    # uma pasta do utilizador nao precisa de permissoes nenhumas.
+    $alternativa = Join-Path $env:LOCALAPPDATA "pericias-tessdata"
+    $portuguesAlt = Join-Path $alternativa "por.traineddata"
+
+    if ((Test-Path $portugues) -or (Test-Path $portuguesAlt)) {
+        Write-Host "  portugues ja instalado" -ForegroundColor Green
+    } else {
         # O instalador do Tesseract traz so ingles. Sem o portugues, o OCR le
         # os laudos com o modelo errado e erra os acentos em cada palavra.
         Write-Host "  a descarregar o portugues..."
+        $urlPor = "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/por.traineddata"
+        $feito = $false
         try {
-            Invoke-WebRequest -UseBasicParsing `
-                -Uri "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/por.traineddata" `
-                -OutFile $portugues
-            Write-Host "  portugues instalado" -ForegroundColor Green
+            Invoke-WebRequest -UseBasicParsing -Uri $urlPor -OutFile $portugues
+            $feito = $true
         } catch {
-            Write-Host "  nao consegui descarregar o portugues: $_" -ForegroundColor Yellow
+            Write-Host "  sem permissao em $tessdata; a usar a pasta do utilizador"
+            try {
+                New-Item -ItemType Directory -Force -Path $alternativa | Out-Null
+                # O Tesseract procura todas as linguas em TESSDATA_PREFIX, por
+                # isso o ingles tem de vir junto ou deixa de estar disponivel.
+                foreach ($lingua in @("eng", "osd")) {
+                    $origemL = Join-Path $tessdata "$lingua.traineddata"
+                    if (Test-Path $origemL) {
+                        Copy-Item $origemL -Destination $alternativa -Force -ErrorAction SilentlyContinue
+                    }
+                }
+                Invoke-WebRequest -UseBasicParsing -Uri $urlPor -OutFile $portuguesAlt
+                [Environment]::SetEnvironmentVariable("TESSDATA_PREFIX", $alternativa, "User")
+                $env:TESSDATA_PREFIX = $alternativa
+                $feito = $true
+                Write-Host "  TESSDATA_PREFIX definido para $alternativa"
+            } catch {
+                Write-Host "  nao consegui instalar o portugues: $_" -ForegroundColor Yellow
+            }
         }
-    } else {
-        Write-Host "  portugues ja instalado" -ForegroundColor Green
+        if ($feito) { Write-Host "  portugues instalado" -ForegroundColor Green }
     }
 } else {
     Write-Host "  NAO INSTALADO." -ForegroundColor Yellow
@@ -181,8 +207,12 @@ if ($env:ACERVO_URL -and -not (Test-Path $acervo)) {
 # Uma pagina de erro HTML guardada com o nome do acervo passaria por ficheiro
 # valido e so daria erro quando alguem tentasse procurar.
 if (Test-Path $acervo) {
-    $bytes = [System.IO.File]::ReadAllBytes($acervo)[0..14]
-    $assinatura = [System.Text.Encoding]::ASCII.GetString($bytes)
+    # Ler so o cabecalho: ReadAllBytes carregava o ficheiro inteiro para
+    # memoria e rebentava acima de 2 GB -- que e o tamanho de um acervo real.
+    $bytes = New-Object byte[] 15
+    $fluxo = [System.IO.File]::OpenRead($acervo)
+    try { $lidos = $fluxo.Read($bytes, 0, 15) } finally { $fluxo.Close() }
+    $assinatura = [System.Text.Encoding]::ASCII.GetString($bytes, 0, $lidos)
     if (-not $assinatura.StartsWith("SQLite format 3")) {
         Write-Host "  O ficheiro descarregado nao e um acervo valido." -ForegroundColor Red
         Write-Host "  (o link devolveu outra coisa -- provavelmente uma pagina de aviso)"
