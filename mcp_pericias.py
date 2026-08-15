@@ -29,7 +29,24 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from mcp.server import MCPServer
+# O pacote mcp mudou de nome de classe entre series: 2.x expoe MCPServer,
+# 1.x expoe FastMCP. A interface que usamos aqui -- construtor com name e
+# instructions, decorador .tool(), metodo .run() -- e igual nas duas, mas
+# importar so uma delas faz o servidor morrer no arranque em metade das
+# maquinas. E morre em silencio: o Claude Desktop nao mostra erro nenhum,
+# apenas nao apresenta as ferramentas, o que e indistinguivel de nao estar
+# instalado.
+try:
+    from mcp.server import MCPServer
+except ImportError:  # pragma: no cover - depende da versao instalada
+    try:
+        from mcp.server.fastmcp import FastMCP as MCPServer
+    except ImportError as erro:
+        raise SystemExit(
+            "O pacote 'mcp' nao esta instalado ou e demasiado antigo.\n"
+            "Instala com:\n"
+            f"  {sys.executable} -m pip install --upgrade mcp"
+        ) from erro
 
 RAIZ = Path(__file__).resolve().parent
 sys.path.insert(0, str(RAIZ))
@@ -419,5 +436,50 @@ def pecas_da_vara(vara: str, quantos: int = 30) -> str:
     )
 
 
+def verificar() -> int:
+    """Diz numa passagem se este servidor consegue servir o acervo.
+
+    Diagnosticar isto pelo Claude Desktop e impossivel: quando o servidor nao
+    arranca, a aplicacao nao mostra erro -- as ferramentas simplesmente nao
+    aparecem. Esta funcao corre o mesmo caminho que o servidor faz ao arrancar
+    e diz em que ponto falha.
+    """
+    print(f"Python  : {sys.executable}")
+    print(f"Servidor: {MCPServer.__module__}.{MCPServer.__name__}")
+
+    acervo = localizar_acervo()
+    if acervo is None:
+        print("Acervo  : NAO ENCONTRADO")
+        print()
+        print(f"Coloca {NOME_ACERVO} em {RAIZ}")
+        print("ou define a variavel de ambiente ACERVO_PERICIAS.")
+        return 1
+    print(f"Acervo  : {acervo} ({acervo.stat().st_size / 1024 / 1024:.0f} MB)")
+
+    try:
+        conexao = ligar()
+    except sqlite3.Error as erro:
+        print(f"ERRO ao abrir o acervo: {erro}")
+        return 1
+    try:
+        total, laudos = conexao.execute(
+            "SELECT COUNT(*), SUM(tipo = 'laudo') FROM documentos"
+        ).fetchone()
+    except sqlite3.Error as erro:
+        print(f"ERRO ao ler o acervo: {erro}")
+        return 1
+    finally:
+        conexao.close()
+
+    print(f"Conteudo: {total} documentos, {laudos or 0} laudos")
+    print()
+    print("Tudo pronto. Se o Claude Desktop continua sem ver as ferramentas,")
+    print("o problema esta na ligacao: corre `python instalar_mcp.py` e")
+    print("encerra o Claude pelo icone junto ao relogio antes de o reabrir.")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--verificar" in sys.argv:
+        raise SystemExit(verificar())
     servidor.run()
